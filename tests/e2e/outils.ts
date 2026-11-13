@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { connect, createServer, type Socket } from 'node:net';
 import { Client, ouvrirRegie, pause } from '../charge/client.mjs';
 import type { Reglages } from '../../src/shared/protocole';
 
@@ -67,4 +68,39 @@ export async function attendrePhase(client: Client, phase: string, manche?: numb
 
 export function fermerTout(...clients: Array<Client | Client[]>): void {
   for (const client of clients.flat()) client.fermer();
+}
+
+/**
+ * Un relais entre le navigateur et le serveur, que l'on peut « geler » : les
+ * connexions ouvertes cessent de transmettre, sans se fermer. C'est ce que fait
+ * un réseau mobile qui décroche. Les nouvelles connexions passent normalement
+ * une fois le relais dégelé.
+ */
+export async function relaisGelable(port: number): Promise<{ geler: () => void; degeler: () => void; fermer: () => Promise<void> }> {
+  let gele = false;
+  const relais = createServer((cote: Socket) => {
+    const serveur = connect(Number(new URL(BASE).port), 'localhost');
+    let morte = false;
+    const passer = (de: Socket, vers: Socket) =>
+      de.on('data', (donnees) => {
+        if (gele) morte = true;
+        if (!morte) vers.write(donnees);
+      });
+    passer(cote, serveur);
+    passer(serveur, cote);
+    for (const s of [cote, serveur]) {
+      s.on('error', () => undefined);
+      s.on('close', () => (s === cote ? serveur : cote).destroy());
+    }
+  });
+  await new Promise<void>((pret) => relais.listen(port, 'localhost', pret));
+  return {
+    geler: () => {
+      gele = true;
+    },
+    degeler: () => {
+      gele = false;
+    },
+    fermer: () => new Promise((fini) => relais.close(() => fini())),
+  };
 }

@@ -162,13 +162,17 @@ export class Connexion {
       case 'auth':
         // Le serveur répond d'abord « non authentifié » à toute connexion, puis au jeton envoyé.
         this.reponsesAuth++;
-        this.auth = m;
         if (m.ok) {
+          this.auth = m;
           this.verification = false;
           if (m.jeton) ecrire(CLE_JETON, m.jeton);
+        } else if (this.verification && this.reponsesAuth < 2) {
+          // Réponse d'accueil : on attend celle du jeton. La régie déjà affichée reste en place
+          // (une micro-coupure ne doit pas faire perdre un scénario en cours de saisie).
         } else {
+          this.auth = m;
           this.regie = null;
-          if (this.verification && this.reponsesAuth >= 2) {
+          if (this.verification) {
             // Le jeton enregistré n'est plus valable : il faut ressaisir le code.
             this.verification = false;
             ecrire(CLE_JETON, null);
