@@ -46,6 +46,12 @@ export class Connexion {
   private compteurInfos = 0;
   private reponsesAuth = 0;
   private minuteriePing: ReturnType<typeof setInterval> | null = null;
+  private minuterieRetard: ReturnType<typeof setInterval> | null = null;
+  private surveillance: ReturnType<typeof setTimeout> | null = null;
+  /** Heure (locale) du dernier message reçu du serveur. */
+  private dernierMessage = 0;
+  /** Fin de phase pour laquelle on a déjà vérifié que la connexion vivait. */
+  private retardVerifie = 0;
 
   constructor(role: Role) {
     this.role = role;
@@ -77,6 +83,7 @@ export class Connexion {
       this.verification = false;
     });
     this.socket.addEventListener('message', (evenement: MessageEvent) => {
+      this.dernierMessage = Date.now();
       if (typeof evenement.data !== 'string') return;
       try {
         this.recevoir(JSON.parse(evenement.data) as MessageServeur);
@@ -84,7 +91,8 @@ export class Connexion {
         // Message illisible : on l'ignore.
       }
     });
-    this.minuteriePing = setInterval(() => this.ping(), 15_000);
+    this.minuteriePing = setInterval(() => this.ping(), 10_000);
+    this.minuterieRetard = setInterval(() => this.verifierRetard(), 2000);
     // Au retour sur l'onglet (sortie de veille), on vérifie tout de suite la connexion.
     document.addEventListener('visibilitychange', this.surVisibilite);
   }
@@ -92,7 +100,7 @@ export class Connexion {
   private surVisibilite = () => {
     if (document.visibilityState !== 'visible') return;
     if (this.socket.readyState === WebSocket.CLOSED) this.socket.reconnect();
-    else this.ping();
+    else this.ping(3000);
   };
 
   /** Temps de jeu écoulé (hors pauses), en millisecondes, à l'instant `local`. */
@@ -103,8 +111,31 @@ export class Connexion {
     return e.tempsJeu + (enCours ? Math.max(0, local + this.decalage - this.tsEtat) : 0);
   }
 
-  private ping(): void {
-    if (this.socket.readyState === WebSocket.OPEN) this.envoyer({ t: 'ping', c: Date.now() });
+  /**
+   * Demande au serveur s'il est là. Sans aucune nouvelle dans le délai, la
+   * connexion est morte sans s'être fermée (cas courant sur réseau mobile) :
+   * on en ouvre une autre, et le serveur renvoie l'état complet.
+   */
+  private ping(delai = 6000): void {
+    if (this.socket.readyState !== WebSocket.OPEN) return;
+    const envoi = Date.now();
+    this.envoyer({ t: 'ping', c: envoi });
+    if (this.surveillance) clearTimeout(this.surveillance);
+    this.surveillance = setTimeout(() => {
+      this.surveillance = null;
+      if (this.dernierMessage >= envoi || this.socket.readyState !== WebSocket.OPEN) return;
+      this.enLigne = false;
+      this.socket.reconnect();
+    }, delai);
+  }
+
+  /** Le chrono est écoulé depuis plusieurs secondes et rien n'arrive : on vérifie la connexion. */
+  private verifierRetard(): void {
+    const e = this.etat;
+    if (!e || e.finPhase === null || e.pause !== null || e.attenteRegie || e.finPhase === this.retardVerifie) return;
+    if (Date.now() + this.decalage < e.finPhase + 4000) return;
+    this.retardVerifie = e.finPhase;
+    this.ping(3000);
   }
 
   private recevoir(m: MessageServeur): void {
@@ -204,6 +235,8 @@ export class Connexion {
 
   fermer(): void {
     if (this.minuteriePing) clearInterval(this.minuteriePing);
+    if (this.minuterieRetard) clearInterval(this.minuterieRetard);
+    if (this.surveillance) clearTimeout(this.surveillance);
     document.removeEventListener('visibilitychange', this.surVisibilite);
     this.socket.close();
   }

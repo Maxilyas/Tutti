@@ -2,6 +2,7 @@
  * Les trois écrans dans de vrais navigateurs : le téléphone d'un spectateur,
  * le grand écran et la régie, pendant une partie.
  */
+import { createServer, connect, type Socket } from 'node:net';
 import { devices, expect, test, type Page } from '@playwright/test';
 import { CIBLES, PIN, attendrePhase, connecterJoueurs, fermerTout, parEquipe, preparer } from './outils';
 
@@ -115,6 +116,56 @@ test('le téléphone garde son équipe après un rechargement', async ({ browser
   await api.attendre((c) => c.etat.joueurs === 1, 5000, 'un seul joueur compté');
   fermerTout(api);
   await contexte.close();
+});
+
+test('une connexion morte sans s’être fermée est détectée, et le téléphone rattrape la partie', async ({ browser }) => {
+  // Entre le téléphone et le serveur, un relais que l'on peut « geler » : les données ne passent
+  // plus, mais la connexion ne se ferme pas. C'est ce que fait un réseau mobile qui décroche.
+  let gele = false;
+  const relais = createServer((cote: Socket) => {
+    const serveur = connect(5199, 'localhost');
+    const liaison = { gelee: false };
+    const passer = (de: Socket, vers: Socket) =>
+      de.on('data', (donnees) => {
+        if (gele) liaison.gelee = true;
+        if (!liaison.gelee) vers.write(donnees);
+      });
+    passer(cote, serveur);
+    passer(serveur, cote);
+    for (const s of [cote, serveur]) {
+      s.on('error', () => undefined);
+      s.on('close', () => (s === cote ? serveur : cote).destroy());
+    }
+  });
+  await new Promise<void>((pret) => relais.listen(5198, 'localhost', pret));
+
+  const api = await preparer({ durees: { premierVote: 5, vote: 30, affichage: 2, deplacement: 2 } });
+  const contexte = await browser.newContext({ ...devices['Pixel 7'], baseURL: 'http://localhost:5198' });
+  const page = await contexte.newPage();
+  try {
+    await page.goto('/');
+    await expect(page.locator('.carte-equipe')).toBeVisible();
+    api.action({ a: 'lancer' });
+    await expect(page.locator('.minuteur h2')).toHaveText('Votez !');
+    await expect(page.locator('.bandeau .manche')).toHaveText('Manche 1');
+
+    // Le réseau décroche. Pendant ce temps, la partie avance jusqu'à la manche 2.
+    gele = true;
+    await attendrePhase(api, 'vote', 2);
+    gele = false;
+
+    // Le téléphone s'en aperçoit seul, se reconnecte, et retrouve la manche en cours.
+    await expect(page.locator('.bandeau .manche')).toHaveText('Manche 2', { timeout: 25_000 });
+    await expect(page.locator('.minuteur h2')).toHaveText('Votez !');
+    await expect(page.locator('.hors-ligne')).toHaveCount(0);
+    await page.locator('button.case[data-case=A1]').click();
+    await expect(page.locator('.mon-vote b')).toHaveText('A1');
+    await api.attendre((c) => Object.values(c.regie.votes).some((urne) => urne?.A1 === 1), 5000, 'vote reçu après la reconnexion');
+  } finally {
+    fermerTout(api);
+    await contexte.close();
+    await new Promise((fini) => relais.close(fini));
+  }
 });
 
 test('la régie : réglages, musicien absent, éditeur de scénario et vérificateur', async ({ browser }) => {
