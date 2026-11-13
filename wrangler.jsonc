@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Nom de l'application : l'adresse sera https://tutti.<votre-compte>.workers.dev
+  "name": "tutti",
+  "main": "src/server/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "binding": "ASSETS",
+    // Toutes les adresses inconnues (/ecran, /regie…) renvoient l'application.
+    "not_found_handling": "single-page-application",
+    // Le temps réel (WebSocket) passe toujours par le serveur.
+    "run_worker_first": ["/parties/*"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "GameRoom", "class_name": "GameRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameRoom"] }],
+  "observability": { "enabled": true }
+}

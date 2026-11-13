@@ -1,0 +1,78 @@
+{
+  "titre": "Tutti",
+  "sousTitre": "Puzzle musical",
+  "dureeCible": 270,
+  "durees": { "premierVote": 30, "vote": 20, "affichage": 15, "deplacement": 15 },
+  "options": {
+    "afficherSilhouette": true,
+    "enigmesPubliques": true,
+    "voteLibre": true,
+    "renfort": true,
+    "echecsParIndice": 2
+  },
+  "pions": [
+    {
+      "couleur": "rouge",
+      "depart": "D4",
+      "cible": "B1",
+      "enigme": "Le rouge est plus haut que le vert.",
+      "contraintes": [{ "type": "plusHaut", "autre": "vert" }],
+      "indices": ["Le rouge joue dans le très aigu.", "Le rouge joue la boucle B."],
+      "absent": false
+    },
+    {
+      "couleur": "orange",
+      "depart": "E1",
+      "cible": "E4",
+      "enigme": "L'orange veut être seul.",
+      "contraintes": [{ "type": "seul" }],
+      "indices": ["L'orange joue dans le grave.", "L'orange joue la boucle E."],
+      "absent": false
+    },
+    {
+      "couleur": "jaune",
+      "depart": "B3",
+      "cible": "C2",
+      "enigme": "Le jaune se trouve à 3 cases du bleu.",
+      "contraintes": [{ "type": "distance", "autre": "bleu", "n": 3 }],
+      "indices": ["Le jaune joue dans l'aigu.", "Le jaune joue la boucle C."],
+      "absent": false
+    },
+    {
+      "couleur": "vert",
+      "depart": "D2",
+      "cible": "B5",
+      "enigme": "Le vert est à côté du bleu.",
+      "contraintes": [{ "type": "aCote", "autre": "bleu" }],
+      "indices": ["Le vert joue dans le très grave.", "Le vert joue la boucle B."],
+      "absent": false
+    },
+    {
+      "couleur": "bleu",
+      "depart": "C1",
+      "cible": "C5",
+      "enigme": "Le bleu est à côté du vert.",
+      "contraintes": [{ "type": "aCote", "autre": "vert" }],
+      "indices": ["Le bleu joue dans le très grave.", "Le bleu joue la boucle C."],
+      "absent": false
+    },
+    {
+      "couleur": "violet",
+      "depart": "A5",
+      "cible": "A3",
+      "enigme": "Le violet veut être seul, tout à gauche.",
+      "contraintes": [{ "type": "seul" }, { "type": "bord", "cote": "gauche" }],
+      "indices": ["Le violet joue dans le medium.", "Le violet joue la boucle A."],
+      "absent": false
+    },
+    {
+      "couleur": "rose",
+      "depart": "E4",
+      "cible": "C4",
+      "enigme": "Le rose est au-dessus du bleu.",
+      "contraintes": [{ "type": "auDessus", "autre": "bleu" }],
+      "indices": ["Le rose joue dans le grave.", "Le rose joue la boucle C."],
+      "absent": false
+    }
+  ]
+}

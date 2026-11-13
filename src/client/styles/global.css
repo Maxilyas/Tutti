@@ -1,0 +1,115 @@
+/*
+ * Les chiffres sont pris dans la police de titre : son zéro n'est pas barré
+ * (on lit « 10 joueurs », pas « 1Ø joueurs »).
+ */
+@font-face {
+  font-family: 'Tutti Chiffres';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 800;
+  src: url('../../../node_modules/@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range: U+0030-0039;
+}
+
+:root {
+  --fond: #0a0a11;
+  --fond-2: #11111b;
+  --surface: #181824;
+  --surface-2: #222232;
+  --surface-3: #2c2c40;
+  --trait: rgba(255, 255, 255, 0.1);
+  --trait-fort: rgba(255, 255, 255, 0.22);
+  --texte: #f5f5fa;
+  --texte-2: #b9b9cc;
+  --texte-3: #8585a0;
+  --encre: #101018;
+  --verrou: #3b3b4a;
+  --ok: #2fd673;
+  --alerte: #ffb52e;
+  --danger: #ff5263;
+  --accent: #8f7bff;
+
+  --police: 'Tutti Chiffres', 'Atkinson Hyperlegible Next Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --titre: 'Bricolage Grotesque Variable', var(--police);
+
+  color-scheme: dark;
+  font-family: var(--police);
+  font-size: 16px;
+  line-height: 1.35;
+  color: var(--texte);
+  background: var(--fond);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--fond);
+  overscroll-behavior: none;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  height: 100%;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
