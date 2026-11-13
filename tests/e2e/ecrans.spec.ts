@@ -3,7 +3,7 @@
  * le grand écran et la régie, pendant une partie.
  */
 import { devices, expect, test, type Page } from '@playwright/test';
-import { CIBLES, PIN, attendrePhase, connecterJoueurs, fermerTout, parEquipe, preparer, relaisGelable } from './outils';
+import { CIBLES, DEPARTS, PIN, attendrePhase, connecterJoueurs, fermerTout, parEquipe, pause, preparer, relaisGelable } from './outils';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -145,6 +145,118 @@ test('une connexion morte sans s’être fermée est détectée, et le télépho
     fermerTout(api);
     await contexte.close();
     await relais.fermer();
+  }
+});
+
+test('un vote donné pendant une coupure est compté dès le retour du réseau', async ({ browser }) => {
+  const relais = await relaisGelable(5198);
+  const api = await preparer({ durees: { premierVote: 60, vote: 60, affichage: 2, deplacement: 2 } });
+  const contexte = await browser.newContext({ ...devices['Pixel 7'], baseURL: 'http://localhost:5198' });
+  const page = await contexte.newPage();
+  try {
+    await page.goto('/');
+    const equipe = (await page.locator('.carte-equipe').getAttribute('data-equipe')) as 'rouge';
+    api.action({ a: 'lancer' });
+    await expect(page.locator('.minuteur h2')).toHaveText('Votez !');
+
+    // Le réseau décroche : le spectateur vote quand même. Son téléphone l'affiche, le serveur n'a rien reçu.
+    relais.geler();
+    await page.locator('button.case[data-case=A1]').click();
+    await expect(page.locator('.mon-vote b')).toHaveText('A1');
+    await pause(1500);
+    expect(api.regie.votes[equipe]).toBeUndefined();
+
+    // Le réseau revient : le téléphone se reconnecte et renvoie le vote, sans que le spectateur ait rien à refaire.
+    relais.degeler();
+    await api.attendre((c) => c.regie.votes[equipe]?.A1 === 1, 30_000, 'vote reçu après la coupure');
+    await expect(page.locator('.mon-vote b')).toHaveText('A1');
+    await expect(page.locator('.hors-ligne')).toHaveCount(0);
+  } finally {
+    fermerTout(api);
+    await contexte.close();
+    await relais.fermer();
+  }
+});
+
+test('la régie pilote au clavier et corrige les pions sans fausse manœuvre', async ({ browser }) => {
+  const api = await preparer({ durees: { premierVote: 120, vote: 120, affichage: 120, deplacement: 120 } });
+  const joueurs = await connecterJoueurs(7);
+  const contexte = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const regie = await contexte.newPage();
+  const pion = (couleur: string) => api.etat.pions.find((p) => p.couleur === couleur)!;
+  try {
+    await entrerEnRegie(regie);
+    await regie.locator('[data-action=lancer]').click();
+    await attendrePhase(api, 'vote', 1);
+
+    // Échange à la main : l'orange va sur E4, où se trouve le rose. Cliquer le pion rose désigne sa case.
+    await expect(regie.locator('.indicateur.phase')).toContainText('Vote');
+    await regie.locator('button.pion[data-pion=orange]').click();
+    await regie.locator('button.pion[data-pion=rose]').click();
+    await api.attendre(() => pion('orange').position === 'E4', 5000, 'orange en E4');
+    expect(pion('orange').verrouille).toBe(true);
+    expect(pion('rose').position).toBe(DEPARTS.orange);
+
+    // Vote à la place d'une équipe, pour une case occupée par un autre pion.
+    await regie.locator('button.pion[data-pion=bleu]').click();
+    await regie.getByRole('radio', { name: /vote à la place/ }).check();
+    await regie.locator('button.pion[data-pion=vert]').click();
+    await api.attendre((c) => c.regie.pions.bleu?.choixRegie === DEPARTS.vert, 5000, 'vote de la régie pour le bleu');
+    expect(pion('bleu').position).toBe(DEPARTS.bleu);
+
+    // Espace met en pause, même juste après un clic sur un bouton (qui garde le focus) :
+    // pas de second indice, pas de phase sautée.
+    await regie.locator('[data-indice=rouge]').click();
+    await api.attendre(() => pion('rouge').indices.length === 1, 5000, 'un indice donné');
+    await regie.keyboard.press('Space');
+    await api.attendre((c) => c.etat.pause !== null, 5000, 'pause au clavier');
+    expect(pion('rouge').indices).toHaveLength(1);
+    expect(api.etat.phase).toBe('vote');
+    // On attend, comme la personne en régie, que l'écran montre la pause avant de reprendre.
+    await expect(regie.locator('[data-action=reprendre]')).toBeVisible();
+    await regie.keyboard.press('Space');
+    await api.attendre((c) => c.etat.pause === null, 5000, 'reprise au clavier');
+    await expect(regie.locator('[data-action=pause]')).toBeVisible();
+
+    // Un double clic sur « Phase suivante » n'avance que d'une phase.
+    await regie.locator('[data-action=suivant]').dblclick();
+    await attendrePhase(api, 'affichage', 1);
+    await pause(900);
+    expect(api.etat).toMatchObject({ phase: 'affichage', manche: 1 });
+    await expect(regie.locator('.indicateur.phase')).toContainText('Résultat');
+
+    // La flèche droite fonctionne après un clic sur un onglet, et une touche maintenue ne compte qu'une fois.
+    await regie.locator('[data-onglet=journal]').click();
+    await regie.keyboard.down('ArrowRight');
+    await regie.keyboard.down('ArrowRight');
+    await regie.keyboard.down('ArrowRight');
+    await regie.keyboard.up('ArrowRight');
+    await attendrePhase(api, 'deplacement', 1);
+    await pause(900);
+    expect(api.etat).toMatchObject({ phase: 'deplacement', manche: 1 });
+    await expect(regie.locator('.indicateur.phase')).toContainText('Déplacement');
+
+    // Dans un champ de saisie, les touches restent des touches : pas de raccourci.
+    await regie.locator('[data-onglet=reglages]').click();
+    const champ = regie.locator('input[data-duree=vote]');
+    await champ.focus();
+    await regie.keyboard.press('ArrowRight');
+    await regie.keyboard.press('Space');
+    await pause(600);
+    expect(api.etat).toMatchObject({ phase: 'deplacement', pause: null });
+
+    // Un champ vidé par mégarde reprend sa valeur : la durée ne tombe pas à 2 secondes.
+    await champ.fill('');
+    await champ.blur();
+    await expect(champ).toHaveValue('120');
+    await pause(400);
+    expect(api.regie.scenario.durees.vote).toBe(120);
+    await champ.fill('45');
+    await champ.blur();
+    await api.attendre((c) => c.regie.scenario.durees.vote === 45, 5000, 'durée modifiée');
+  } finally {
+    fermerTout(api, joueurs);
+    await contexte.close();
   }
 });
 

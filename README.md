@@ -58,8 +58,8 @@ Compter 10 minutes, une seule fois.
 
    À la première fois, Cloudflare demande de choisir un sous-domaine. La commande affiche ensuite l'adresse
    de l'application, de la forme `https://tutti.<sous-domaine>.workers.dev`.
-3. Ouvrir `https://tutti.<sous-domaine>.workers.dev/regie` et **choisir le code de la régie**.
-   À faire tout de suite : le premier qui ouvre cette page choisit le code.
+3. Ouvrir `https://tutti.<sous-domaine>.workers.dev/regie` et **choisir le code de la régie**
+   (6 caractères au moins). À faire tout de suite : le premier qui ouvre cette page choisit le code.
 
 Pour imposer le code plutôt que le choisir dans la page : `npx wrangler secret put REGIE_PIN`.
 

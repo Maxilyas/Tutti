@@ -56,17 +56,29 @@
   onMount(() => {
     void QRCode.toString(adresse, { type: 'svg', margin: 0, errorCorrectionLevel: 'M' }).then((svg) => (qr = svg));
     const clavier = (e: KeyboardEvent) => {
-      const cible = e.target as HTMLElement | null;
-      if (!r || !enJeu || confirmation || (cible && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(cible.tagName))) return;
-      if (e.code === 'Space') {
-        e.preventDefault();
-        c.action({ a: etat?.pause !== null ? 'reprendre' : 'pause' });
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        c.action({ a: 'suivant' });
-      } else if (e.key === '+') {
-        c.action({ a: 'prolonger', secondes: 10 });
+      if (e.key === 'Escape') {
+        confirmation = null;
+        selection = null;
+        return;
       }
+      // Touche maintenue ou combinaison : ce n'est pas un raccourci.
+      if (!r || !etat || !enJeu || confirmation || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      const cible = e.target instanceof HTMLElement ? e.target : null;
+      const saisie =
+        cible instanceof HTMLTextAreaElement ||
+        cible instanceof HTMLSelectElement ||
+        (cible instanceof HTMLInputElement && !['checkbox', 'radio', 'button', 'submit'].includes(cible.type));
+      if (saisie) return;
+      let raccourci: (() => void) | null = null;
+      if (e.code === 'Space') raccourci = () => c.action({ a: etat?.pause !== null ? 'reprendre' : 'pause' });
+      else if (e.key === 'ArrowRight') raccourci = passerALaSuite;
+      else if (e.key === '+') raccourci = () => c.action({ a: 'prolonger', secondes: 10 });
+      if (!raccourci) return;
+      // Un bouton ou une case cochée à la souris garde le focus : sans ceci, Espace
+      // le réactiverait (un second indice, une phase sautée…) au lieu de mettre en pause.
+      e.preventDefault();
+      cible?.blur();
+      raccourci();
     };
     window.addEventListener('keydown', clavier);
     return () => {
@@ -100,19 +112,59 @@
     c.action(action);
   }
 
+  let dernierSuivant = 0;
+
+  /** « Phase suivante » : un double clic ne doit pas sauter deux phases. */
+  function passerALaSuite(): void {
+    if (!etat) return;
+    const maintenant = Date.now();
+    if (maintenant - dernierSuivant < 700) return;
+    dernierSuivant = maintenant;
+    c.action({ a: 'suivant', phase: etat.phase, manche: etat.manche });
+  }
+
   function surPion(couleur: Couleur): void {
+    if (selection && selection !== couleur) {
+      // Un pion est déjà choisi : cliquer un autre pion, c'est désigner la case qu'il occupe
+      // (pour échanger leurs places, ou voter pour cette case).
+      const occupant = etat?.pions.find((p) => p.couleur === couleur);
+      if (occupant) surCase(occupant.position);
+      return;
+    }
     selection = selection === couleur ? null : couleur;
   }
 
   function surCase(cas: Case): void {
     if (!selection) return;
-    if (modeClic === 'voter') c.action({ a: 'choisir', couleur: selection, case: cas });
+    if (modeClic === 'voter' && etat?.phase === 'vote') c.action({ a: 'choisir', couleur: selection, case: cas });
     else c.action({ a: 'deplacer', couleur: selection, case: cas });
+    selection = null;
   }
 
-  function reglerDuree(champ: keyof Durees, valeur: string): void {
-    const secondes = Number(valeur);
-    if (Number.isFinite(secondes)) c.action({ a: 'reglages', reglages: { durees: { [champ]: secondes } } });
+  // Pendant l'affichage du résultat, la grille montre encore les anciennes places :
+  // on ne corrige les pions que pendant le vote et le déplacement.
+  const correctionPossible = $derived(etat?.phase === 'vote' || etat?.phase === 'deplacement');
+  $effect(() => {
+    if (!correctionPossible) selection = null;
+  });
+
+  /**
+   * Lit un champ numérique. Vidé ou invalide, il reprend son ancienne valeur et rien
+   * n'est envoyé (sinon un champ vidé par mégarde réglerait une phase à 2 secondes).
+   */
+  function nombre(champ: HTMLInputElement, actuel: number, min: number): number | null {
+    const valeur = Number(champ.value);
+    if (champ.value.trim() === '' || !Number.isFinite(valeur) || valeur < min) {
+      champ.value = String(actuel);
+      return null;
+    }
+    return valeur;
+  }
+
+  function reglerDuree(champ: keyof Durees, element: HTMLInputElement): void {
+    if (!r) return;
+    const secondes = nombre(element, r.scenario.durees[champ], 2);
+    if (secondes !== null) c.action({ a: 'reglages', reglages: { durees: { [champ]: secondes } } });
   }
 
   function reglerOption(champ: keyof OptionsScenario, valeur: boolean | number): void {
@@ -196,7 +248,7 @@
             {:else}
               <button class="gros" onclick={() => c.action({ a: 'pause' })} data-action="pause">⏸ Pause <kbd>Espace</kbd></button>
             {/if}
-            <button class="gros" class:accent={etat.attenteRegie} onclick={() => c.action({ a: 'suivant' })} data-action="suivant">⏭ Phase suivante <kbd>→</kbd></button>
+            <button class="gros" class:accent={etat.attenteRegie} onclick={passerALaSuite} data-action="suivant">⏭ Phase suivante <kbd>→</kbd></button>
             <button class="gros" onclick={() => c.action({ a: 'prolonger', secondes: 10 })} data-action="prolonger">+10 s <kbd>+</kbd></button>
           </div>
           <label class="bascule">
@@ -220,8 +272,8 @@
           {cibles}
           {selection}
           {choixRegie}
-          surPion={enJeu ? surPion : undefined}
-          surCase={enJeu && selection ? surCase : undefined}
+          surPion={correctionPossible ? surPion : undefined}
+          surCase={correctionPossible && selection ? surCase : undefined}
         />
         {#if enJeu}
           <div class="correction">
@@ -241,10 +293,14 @@
                     <input type="radio" bind:group={modeClic} value="voter" disabled={etat.phase !== 'vote'} /> Cliquer une case <b>vote à la place de l’équipe</b>
                   </label>
                 </div>
+                <p class="aide">Cliquez maintenant la case voulue, même si un autre pion s’y trouve.</p>
                 {#if r.pions[selection]?.choixRegie}
                   <button onclick={() => selection && c.action({ a: 'choisir', couleur: selection, case: null })}>Annuler le vote de la régie</button>
                 {/if}
               {/if}
+              <button onclick={() => (selection = null)}>Annuler la sélection <kbd>Échap</kbd></button>
+            {:else if !correctionPossible}
+              <p class="aide">Les musiciens se préparent : les pions se corrigent pendant le vote et le déplacement.</p>
             {:else}
               <p class="aide">Cliquez un pion pour le corriger. Les petits points indiquent les cases à trouver (visibles ici seulement).</p>
             {/if}
@@ -319,12 +375,23 @@
             {#each DUREES as d (d.champ)}
               <label class="ligne">
                 <span>{d.nom}<small>{d.aide}</small></span>
-                <input type="number" min="2" max="300" value={r.scenario.durees[d.champ]} onchange={(e) => reglerDuree(d.champ, e.currentTarget.value)} data-duree={d.champ} />
+                <input type="number" min="2" max="300" value={r.scenario.durees[d.champ]} onchange={(e) => reglerDuree(d.champ, e.currentTarget)} data-duree={d.champ} />
               </label>
             {/each}
             <label class="ligne">
               <span>Durée visée de la partie<small>au-delà, la régie est invitée à révéler les pions restants (0 = pas d’alerte)</small></span>
-              <input type="number" min="0" max="3600" step="10" value={r.scenario.dureeCible} onchange={(e) => c.action({ a: 'reglages', reglages: { dureeCible: Number(e.currentTarget.value) } })} />
+              <input
+                type="number"
+                min="0"
+                max="3600"
+                step="10"
+                value={r.scenario.dureeCible}
+                onchange={(e) => {
+                  const dureeCible = nombre(e.currentTarget, r.scenario.dureeCible, 0);
+                  if (dureeCible !== null) c.action({ a: 'reglages', reglages: { dureeCible } });
+                }}
+                data-duree="cible"
+              />
             </label>
             <p class="aide">
               Une manche dure {r.scenario.durees.vote + r.scenario.durees.affichage + r.scenario.durees.deplacement} s. Les durées peuvent être modifiées pendant la partie.
@@ -338,7 +405,16 @@
             <label class="case-a-cocher"><input type="checkbox" checked={r.scenario.options.renfort} onchange={(e) => reglerOption('renfort', e.currentTarget.checked)} /> Une équipe qui a trouvé peut aider les autres</label>
             <label class="ligne">
               <span>Révéler un indice tous les…<small>échecs d’une équipe (0 = seulement à la main)</small></span>
-              <input type="number" min="0" max="10" value={r.scenario.options.echecsParIndice} onchange={(e) => reglerOption('echecsParIndice', Number(e.currentTarget.value))} />
+              <input
+                type="number"
+                min="0"
+                max="10"
+                value={r.scenario.options.echecsParIndice}
+                onchange={(e) => {
+                  const echecs = nombre(e.currentTarget, r.scenario.options.echecsParIndice, 0);
+                  if (echecs !== null) reglerOption('echecsParIndice', echecs);
+                }}
+              />
             </label>
             <label class="case-a-cocher"><input type="checkbox" checked={r.avanceAuto} onchange={(e) => c.action({ a: 'reglages', reglages: { avanceAuto: e.currentTarget.checked } })} /> Enchaîner les phases automatiquement</label>
           </fieldset>
@@ -361,7 +437,19 @@
             {#each [0, 14, 49, 98] as n (n)}
               <button class:actif={r.simules === n} onclick={() => c.action({ a: 'simules', nombre: n })} data-simules={n}>{n === 0 ? 'Aucun' : n}</button>
             {/each}
-            <label>Autre nombre <input type="number" min="0" max="300" value={r.simules} onchange={(e) => c.action({ a: 'simules', nombre: Number(e.currentTarget.value) })} /></label>
+            <label>
+              Autre nombre
+              <input
+                type="number"
+                min="0"
+                max="300"
+                value={r.simules}
+                onchange={(e) => {
+                  const simules = nombre(e.currentTarget, r.simules, 0);
+                  if (simules !== null) c.action({ a: 'simules', nombre: simules });
+                }}
+              />
+            </label>
           </div>
           <h3>Sans réseau dans la salle ?</h3>
           <p class="aide">

@@ -2,7 +2,7 @@
 
 import type { Couleur } from './couleurs';
 import type { Case } from './grille';
-import type { Durees, EtatPublic, EtatRegie, OptionsScenario } from './types';
+import type { Durees, EtatPublic, EtatRegie, OptionsScenario, Phase } from './types';
 
 export type Role = 'joueur' | 'ecran' | 'regie';
 
@@ -22,7 +22,11 @@ export type ActionRegie =
   | { a: 'lancer' }
   | { a: 'pause' }
   | { a: 'reprendre' }
-  | { a: 'suivant' }
+  /**
+   * La régie précise la phase qu'elle voit : si le serveur a déjà avancé (double clic,
+   * chrono qui se termine au même instant), la commande est ignorée.
+   */
+  | { a: 'suivant'; phase?: Phase; manche?: number }
   | { a: 'prolonger'; secondes: number }
   | { a: 'terminer' }
   | { a: 'reveler'; couleur: Couleur; actif: boolean }
@@ -40,7 +44,8 @@ export type ActionRegie =
   | { a: 'changerPin'; pin: string };
 
 export type MessageClient =
-  | { t: 'vote'; manche: number; case: Case }
+  /** `n` : numéro du vote sur cet appareil ; le serveur le renvoie dans sa réponse (`ack`). */
+  | { t: 'vote'; manche: number; case: Case; n?: number }
   | { t: 'renfort' }
   | { t: 'ping'; c: number }
   /** Régie : code saisi, ou jeton reçu lors d'une connexion précédente. */
@@ -50,8 +55,8 @@ export type MessageClient =
 
 export type MessageServeur =
   | { t: 'etat'; ts: number; e: EtatPublic }
-  /** Ce qui ne concerne que ce joueur. */
-  | { t: 'moi'; equipe: Couleur | null; vote: Case | null; manche: number }
+  /** Ce qui ne concerne que ce joueur. `ack` : réponse au vote numéro `ack` de cet appareil. */
+  | { t: 'moi'; equipe: Couleur | null; vote: Case | null; manche: number; ack?: number }
   /** Les votes de mon équipe, en direct. */
   | { t: 'tendance'; manche: number; equipe: Couleur; votes: Record<Case, number> }
   /** Nombre de votants par équipe, en direct. */
@@ -69,5 +74,6 @@ export function connexionValide(role: string | null, id: string | null): role is
   return role !== null && ROLES.includes(role) && id !== null && MOTIF_ID.test(id);
 }
 
-export const PIN_MIN = 4;
+/** Un code court se devine par essais successifs : 6 caractères au moins. */
+export const PIN_MIN = 6;
 export const PIN_MAX = 32;

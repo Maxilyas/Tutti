@@ -13,5 +13,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src/client/**/*", "src/shared/**/*", "scenarios/*.json"]
+  "include": ["src/client/**/*", "src/shared/**/*"]
 }

@@ -372,8 +372,12 @@ gratuit qui s'endort et peut redémarrer), Supabase (pas de logique serveur temp
 
 - **Le serveur fait autorité** : chronos, dépouillement et validation ne se font jamais sur un téléphone.
 - **Les cases à trouver ne quittent jamais le serveur**, sauf vers la régie. Impossible de tricher en
-  inspectant la page. Un test automatique le vérifie.
+  inspectant la page. Deux tests automatiques le vérifient : rien dans les messages échangés, rien dans
+  les fichiers de l'application (qui sont publics).
 - **État complet à chaque changement** : un téléphone qui sort de veille est à jour immédiatement.
+- **Réseau mobile capricieux** : chaque écran vérifie toutes les 10 secondes que le serveur répond, et se
+  reconnecte seul si la connexion est morte sans s'être fermée. Un vote donné pendant une coupure est
+  renvoyé au retour du réseau.
 - **Chronos synchronisés** : le serveur diffuse l'heure de fin de la phase, chaque écran corrige l'écart
   de sa propre horloge.
 - **Enregistrement continu** : si le serveur redémarre, la partie reprend où elle en était.
@@ -413,10 +417,14 @@ Le déroulé complet, la check-list et les dépannages sont dans le [guide de r�
 
 ## 9. Tests
 
+Le code a aussi été relu par une seconde passe indépendante, qui a trouvé et fait corriger dix défauts
+avant livraison, dont un sérieux : la solution du concert se retrouvait dans un fichier public de
+l'application. Chaque correction est couverte par un test.
+
 | Niveau | Ce qui est vérifié |
 |---|---|
-| **Moteur** (59 tests) | Dépouillement, égalités, cases disputées, échanges, chaînes et cycles, verrouillage, indices, vérificateur d'énigmes, absences, répartition des équipes. 300 parties aléatoires vérifient qu'il n'y a jamais deux pions sur la même case. |
-| **Bout en bout** (25 tests) | Parties complètes dans de vrais navigateurs : téléphone, grand écran et régie ensemble ; reconnexion ; absence ; avance manuelle ; révélation ; protection de la régie ; messages invalides ; mise en page sur petits téléphones et écrans 4:3. |
+| **Moteur** (60 tests) | Dépouillement, égalités, cases disputées, échanges, chaînes et cycles, verrouillage, indices, vérificateur d'énigmes, absences, répartition des équipes. 300 parties aléatoires vérifient qu'il n'y a jamais deux pions sur la même case. |
+| **Bout en bout** (32 tests) | Parties complètes dans de vrais navigateurs : téléphone, grand écran et régie ensemble ; réseau qui décroche (reconnexion, vote renvoyé, saisie de la régie conservée) ; absence ; avance manuelle ; révélation ; raccourcis clavier et corrections de la régie ; protection de la régie ; messages invalides ; mise en page sur petits téléphones et écrans 4:3. |
 | **Charge** | 200 téléphones simulés, dont un tiers qui se met en veille en pleine partie : tout le monde reçoit chaque changement de phase en quelques dizaines de millisecondes. |
 
 ---

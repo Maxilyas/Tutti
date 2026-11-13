@@ -2,6 +2,8 @@
  * Le serveur, testé « par le fil » : des clients temps réel jouent une partie
  * exactement comme le feraient les écrans.
  */
+import { readFileSync, readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import {
   BASE,
@@ -108,6 +110,22 @@ test('les cases à trouver ne sont jamais envoyées au public', async () => {
   // La régie, elle, les reçoit.
   expect(regie.bruts.join('\n')).toContain('"cible"');
   fermerTout(regie, ecran, joueur!);
+});
+
+test('le code envoyé aux navigateurs ne contient ni la solution ni les énigmes', async () => {
+  // Les fichiers de l'application sont publics : tout ce qui s'y trouve se lit sans code de régie.
+  const dossier = fileURLToPath(new URL('../../dist/client', import.meta.url));
+  const concert = JSON.parse(readFileSync(new URL('../../scenarios/concert.json', import.meta.url), 'utf8')) as {
+    pions: Array<{ enigme: string; indices: string[] }>;
+  };
+  const secrets = concert.pions.flatMap((p) => [p.enigme, ...p.indices]);
+  const fichiers = (readdirSync(dossier, { recursive: true }) as string[]).filter((f) => /\.(js|css|html|json|map)$/.test(f));
+  expect(fichiers.length).toBeGreaterThan(3);
+  for (const fichier of fichiers) {
+    const contenu = readFileSync(`${dossier}/${fichier}`, 'utf8');
+    expect(contenu, `${fichier} : case à trouver`).not.toMatch(/cible\W{0,3}[A-E][1-5]\b/);
+    for (const secret of secrets) expect(contenu, `${fichier} : « ${secret} »`).not.toContain(secret);
+  }
 });
 
 test('la régie est protégée par son code', async () => {
@@ -289,6 +307,68 @@ test('avance manuelle : chaque phase attend la régie', async () => {
   fermerTout(regie, joueurs);
 });
 
+test('« Phase suivante » en double n’avance que d’une phase', async () => {
+  const regie = await preparer({ durees: { premierVote: 60, vote: 60, affichage: 60, deplacement: 60 } });
+  const joueurs = await connecterJoueurs(7);
+  regie.action({ a: 'lancer' });
+  await attendrePhase(regie, 'vote', 1);
+
+  // Deux commandes parties pour la même phase (double clic, ou clic au moment où le chrono se termine).
+  regie.action({ a: 'suivant', phase: 'vote', manche: 1 });
+  regie.action({ a: 'suivant', phase: 'vote', manche: 1 });
+  await attendrePhase(regie, 'affichage', 1);
+  await pause(500);
+  expect(regie.etat).toMatchObject({ phase: 'affichage', manche: 1 });
+  // Une commande en retard d'une manche est ignorée elle aussi.
+  regie.action({ a: 'suivant', phase: 'affichage', manche: 0 });
+  await pause(400);
+  expect(regie.etat.phase).toBe('affichage');
+  regie.action({ a: 'suivant', phase: 'affichage', manche: 1 });
+  await attendrePhase(regie, 'deplacement', 1);
+  fermerTout(regie, joueurs);
+});
+
+test('+10 s pendant une pause relance le chrono, même en avance manuelle', async () => {
+  const regie = await preparer({ avanceAuto: false, durees: { premierVote: 2, vote: 2, affichage: 2, deplacement: 2 } });
+  const joueurs = await connecterJoueurs(7);
+  regie.action({ a: 'lancer' });
+  await regie.attendre((c) => c.etat.phase === 'vote' && c.etat.attenteRegie, 8000, 'chrono écoulé, attente de la régie');
+  regie.action({ a: 'pause' });
+  await regie.attendre((c) => c.etat.pause !== null, 3000, 'pause');
+  regie.action({ a: 'prolonger', secondes: 4 });
+  regie.action({ a: 'reprendre' });
+  await regie.attendre((c) => c.etat.pause === null && c.etat.finPhase !== null, 3000, 'reprise');
+  expect(regie.etat.attenteRegie).toBe(false);
+  expect(regie.etat.phase).toBe('vote');
+  // Le chrono tourne à nouveau, puis la phase attend de nouveau la régie.
+  await regie.attendre((c) => c.etat.attenteRegie, 8000, 'nouvelle attente en fin de prolongation');
+  expect(regie.etat.phase).toBe('vote');
+  fermerTout(regie, joueurs);
+});
+
+test('le serveur répond à chaque vote numéroté', async () => {
+  const regie = await preparer({ durees: { premierVote: 30, vote: 30, affichage: 2, deplacement: 2 } });
+  const [joueur] = await connecterJoueurs(1);
+  regie.action({ a: 'lancer' });
+  await attendrePhase(joueur!, 'vote', 1);
+  const reponses: Array<{ vote: string | null; ack?: number }> = [];
+  joueur!.ecouteurs.add((m) => {
+    if (m.t === 'moi') reponses.push({ vote: m.vote as string | null, ack: m.ack as number | undefined });
+  });
+  joueur!.envoyer({ t: 'vote', manche: 1, case: 'A2', n: 7 });
+  joueur!.envoyer({ t: 'vote', manche: 1, case: 'Z9', n: 8 }); // refusé : le vote précédent reste
+  joueur!.envoyer({ t: 'vote', manche: 1, case: 'A2', n: 9 }); // doublon (renvoi après coupure)
+  await joueur!.attendre(() => reponses.length === 3, 5000, 'trois réponses');
+  expect(reponses).toEqual([
+    { vote: 'A2', ack: 7 },
+    { vote: 'A2', ack: 8 },
+    { vote: 'A2', ack: 9 },
+  ]);
+  const equipe = joueur!.moi.equipe as 'rouge';
+  await regie.attendre((c) => c.regie.votes[equipe]?.A2 === 1, 5000, 'un seul vote compté');
+  fermerTout(regie, joueur!);
+});
+
 test('la régie peut révéler les pions restants et corriger un pion à la main', async () => {
   const regie = await preparer({ durees: { premierVote: 6, vote: 6, affichage: 2, deplacement: 2 } });
   const joueurs = await connecterJoueurs(7);
@@ -363,4 +443,27 @@ test('répétition : 49 joueurs simulés terminent la partie tout seuls', async 
   regie.action({ a: 'simules', nombre: 0 });
   await regie.attendre((c) => c.etat.joueurs === 0, 5000, 'joueurs simulés retirés');
   fermerTout(regie);
+});
+
+// En dernier : ce test bloque les connexions à la régie pendant une minute.
+test('après cinq codes faux, la régie est verrouillée une minute', async () => {
+  const regie = await preparer();
+  const intrus = new Client(BASE, 'regie');
+  await intrus.ouvert;
+  const raisons: string[] = [];
+  intrus.ecouteurs.add((m) => {
+    if (m.t === 'auth' && typeof m.raison === 'string') raisons.push(m.raison);
+  });
+  for (let essai = 0; essai < 7; essai++) intrus.envoyer({ t: 'auth', pin: `essai-${essai}` });
+  await intrus.attendre(() => raisons.length === 7, 5000, 'sept réponses');
+  expect(raisons.filter((r) => r === 'Code incorrect.')).toHaveLength(5);
+  expect(raisons.slice(5)).toEqual(['Trop d’essais. Réessayez dans une minute.', 'Trop d’essais. Réessayez dans une minute.']);
+  // Même le bon code est refusé pendant le blocage…
+  intrus.envoyer({ t: 'auth', pin: 'tutti-test' });
+  await intrus.attendre(() => raisons.length === 8, 5000, 'réponse au bon code');
+  expect(intrus.auth?.ok).toBe(false);
+  // … mais une régie déjà ouverte continue de piloter.
+  regie.action({ a: 'reglages', reglages: { dureeCible: 123 } });
+  await regie.attendre((c) => c.regie.scenario.dureeCible === 123, 5000, 'la régie ouverte pilote toujours');
+  fermerTout(regie, intrus);
 });

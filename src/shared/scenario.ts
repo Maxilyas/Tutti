@@ -1,6 +1,10 @@
-/** Le scénario par défaut et la validation de tout scénario reçu (régie, import). */
+/**
+ * La validation de tout scénario reçu (régie, import, fichier du concert).
+ *
+ * Ce module est partagé avec les écrans : il ne doit contenir aucun scénario.
+ * Celui du concert, avec ses cases à trouver, est dans src/server/scenarioDefaut.ts.
+ */
 
-import concert from '../../scenarios/concert.json';
 import { COULEURS, Le, estCouleur, type Couleur } from './couleurs';
 import { nettoyerContrainte, type Contrainte } from './enigmes';
 import { estCase } from './grille';
@@ -143,15 +147,6 @@ export function validerScenario(brut: unknown): ResultatValidation {
     },
   };
 }
-
-function scenarioParDefaut(): Scenario {
-  const resultat = validerScenario(concert);
-  if (!resultat.ok) throw new Error(`Scénario par défaut invalide : ${resultat.erreurs.join(' ')}`);
-  return resultat.scenario;
-}
-
-/** Le scénario du concert (fichier scenarios/concert.json). */
-export const SCENARIO_DEFAUT: Scenario = scenarioParDefaut();
 
 export function copier<T>(valeur: T): T {
   return JSON.parse(JSON.stringify(valeur)) as T;

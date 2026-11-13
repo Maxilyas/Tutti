@@ -15,7 +15,8 @@ technique.
 
 ## 1. La semaine d'avant
 
-1. **Ouvrir la régie** et saisir le code. Le noter à deux endroits : il est demandé sur chaque nouvel appareil.
+1. **Ouvrir la régie** et saisir le code (6 caractères au moins, à choisir à la première visite). Le noter
+   à deux endroits : il est demandé sur chaque nouvel appareil.
 2. **Relire le scénario** (onglet *Scénario*) : cases de départ, cases à trouver, énigmes, indices.
    Le vérificateur doit afficher « ✓ Solution unique ».
 3. **Exporter le scénario** (bouton *Exporter*) : c'est votre copie de sauvegarde.
@@ -52,7 +53,7 @@ technique.
 
 | Bouton | Raccourci clavier | Effet |
 |---|---|---|
-| **Pause** / **Reprendre** | Espace | Gèle le chrono. À utiliser au moindre couac. |
+| **Pause** / **Reprendre** | Espace | Gèle le chrono. À utiliser au moindre couac. Fonctionne à tout moment, sauf quand on tape dans un champ. |
 | **Phase suivante** | → | Passe tout de suite à la suite, sans attendre la fin du chrono. |
 | **+10 s** | + | Ajoute 10 secondes à la phase en cours. |
 | **Révéler les pions restants** | | Envoie les pions restants sur leur case et termine la partie. |
@@ -82,10 +83,13 @@ Un musicien s'est trompé de case, ou l'écran ne correspond plus à la scène :
 
 1. Sur la grille de la régie, **cliquer le pion**.
 2. Laisser « le déplace tout de suite » coché.
-3. **Cliquer la case** où se trouve réellement le musicien.
+3. **Cliquer la case** où se trouve réellement le musicien, même si un autre pion y est affiché.
 
 Si la case est occupée par un autre pion, les deux échangent leurs places. Un pion posé sur sa bonne case
-est verrouillé.
+est verrouillé. La touche Échap annule la sélection.
+
+Les corrections se font pendant le vote ou le déplacement. Pendant l'affichage du résultat, la grille
+montre encore les anciennes places : attendre la phase suivante.
 
 ## 4. Un musicien est absent
 
@@ -106,7 +110,8 @@ Décocher la case annule tout.
 | Un téléphone affiche « Reconnexion… » | Rien : il se reconnecte seul et retrouve son équipe. |
 | Un spectateur a fermé la page | Il rescanne le QR code : il retrouve son équipe. |
 | Le grand écran est figé | Recharger la page (F5). Il reprend exactement où en est la partie. |
-| La régie demande le code | Le ressaisir. La partie continue pendant ce temps. |
+| La régie demande le code | Le ressaisir. La partie continue pendant ce temps. Après 5 codes faux, il faut attendre une minute. |
+| La régie affiche « Connexion perdue : la commande n'est pas partie » | Attendre que « Connecté » revienne en haut à droite, puis recliquer. |
 | Une équipe ne vote pas | Donner un indice, ou « Révéler à la prochaine manche ». |
 | Le public n'arrive pas à se connecter (4G saturée) | Plan C ci-dessous. |
 | Plus d'Internet du tout | Plan B ci-dessous. |

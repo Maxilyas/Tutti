@@ -16,7 +16,8 @@ import {
   type OptionsVote,
   type PionJeu,
 } from '../../src/shared/regles';
-import { SCENARIO_DEFAUT, copier } from '../../src/shared/scenario';
+import { SCENARIO_DEFAUT } from '../../src/server/scenarioDefaut';
+import { copier } from '../../src/shared/scenario';
 import type { Mouvement } from '../../src/shared/types';
 
 const LIBRE: OptionsVote = { voteLibre: true, silhouette: null };
@@ -131,6 +132,20 @@ describe('résolution d’une manche', () => {
     const m = parCouleur(resoudreManche(pions, { rouge: { C3: 2 } }, LIBRE, alea()));
     expect(m.rouge).toMatchObject({ vers: 'C3', verrouille: true, chance: false });
     expect(m.bleu).toMatchObject({ vers: 'A1', verrouille: true, chance: true, issue: 'juste' });
+  });
+
+  it('un pion poussé sur sa case par un échange y reste, même si son équipe visait ailleurs', () => {
+    // Le bleu est sur la case du rouge et le rouge sur celle du bleu. Le bleu vote juste :
+    // l'échange pousse le rouge sur sa propre case. Le vote (faux) des rouges ne doit pas l'en chasser.
+    const pions = [pion('rouge', 'A1', 'C3'), pion('bleu', 'C3', 'A1'), pion('vert', 'E5', 'D4')];
+    const votes = { rouge: { B2: 9 }, bleu: { A1: 1 }, vert: { C3: 5 } };
+    for (let graine = 0; graine < 20; graine++) {
+      const m = parCouleur(resoudreManche(pions, votes, LIBRE, aleaGraine(graine)));
+      expect(m.bleu).toMatchObject({ vers: 'A1', verrouille: true, chance: false });
+      expect(m.rouge).toMatchObject({ vers: 'C3', verrouille: true, chance: true, choix: 'B2', issue: 'juste' });
+      // La case C3 est réellement occupée : les verts ne l'obtiennent pas, et on ne leur ment pas.
+      expect(m.vert).toMatchObject({ vers: 'E5', dispute: true, issue: 'faux' });
+    }
   });
 
   it('deux pions peuvent échanger leurs places d’un commun accord', () => {

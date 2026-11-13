@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { lexique, proposerEnigme, verifierEnigmes, type PionAVerifier } from '../../src/shared/enigmes';
-import { SCENARIO_DEFAUT, copier } from '../../src/shared/scenario';
+import { SCENARIO_DEFAUT } from '../../src/server/scenarioDefaut';
+import { copier } from '../../src/shared/scenario';
 
 const pionsDefaut = (): PionAVerifier[] => copier(SCENARIO_DEFAUT.pions);
 

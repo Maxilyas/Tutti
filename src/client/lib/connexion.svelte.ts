@@ -12,6 +12,8 @@ import type { EtatPublic, EtatRegie } from '../../shared/types';
 import { ecrire, identifiant, lire } from './identite';
 
 const CLE_JETON = 'tutti.regie.jeton';
+const PATIENCE_MIN = 6000;
+const PATIENCE_MAX = 20_000;
 
 export interface Info {
   id: number;
@@ -52,6 +54,11 @@ export class Connexion {
   private dernierMessage = 0;
   /** Fin de phase pour laquelle on a déjà vérifié que la connexion vivait. */
   private retardVerifie = 0;
+  /** Délai accordé au serveur pour répondre ; il s'allonge si le réseau est très lent. */
+  private patience = PATIENCE_MIN;
+  private numeroVote = 0;
+  /** Vote envoyé dont le serveur n'a pas encore accusé réception. */
+  private voteEnAttente: { n: number; manche: number; case: Case; envoi: number } | null = null;
 
   constructor(role: Role) {
     this.role = role;
@@ -75,6 +82,8 @@ export class Connexion {
         this.verification = jeton !== null;
         if (jeton) this.envoyer({ t: 'auth', jeton });
       }
+      // Un vote parti juste avant la coupure a pu se perdre : on le renvoie (sans risque, il est numéroté).
+      this.renvoyerVote();
       this.ping();
       setTimeout(() => this.ping(), 1500);
     });
@@ -116,7 +125,7 @@ export class Connexion {
    * connexion est morte sans s'être fermée (cas courant sur réseau mobile) :
    * on en ouvre une autre, et le serveur renvoie l'état complet.
    */
-  private ping(delai = 6000): void {
+  private ping(delai = this.patience): void {
     if (this.socket.readyState !== WebSocket.OPEN) return;
     const envoi = Date.now();
     this.envoyer({ t: 'ping', c: envoi });
@@ -124,13 +133,24 @@ export class Connexion {
     this.surveillance = setTimeout(() => {
       this.surveillance = null;
       if (this.dernierMessage >= envoi || this.socket.readyState !== WebSocket.OPEN) return;
+      // Sur un réseau très lent, se reconnecter en boucle n'arrangerait rien : on patiente davantage la fois suivante.
+      this.patience = Math.min(PATIENCE_MAX, this.patience * 2);
       this.enLigne = false;
       this.socket.reconnect();
-    }, delai);
+    }, Math.max(delai, this.patience === PATIENCE_MIN ? 0 : this.patience));
+  }
+
+  /** Renvoie le vote qui n'a pas encore reçu de réponse du serveur. */
+  private renvoyerVote(): void {
+    const attente = this.voteEnAttente;
+    if (!attente || this.socket.readyState !== WebSocket.OPEN) return;
+    attente.envoi = Date.now();
+    this.envoyer({ t: 'vote', manche: attente.manche, case: attente.case, n: attente.n });
   }
 
   /** Le chrono est écoulé depuis plusieurs secondes et rien n'arrive : on vérifie la connexion. */
   private verifierRetard(): void {
+    if (this.voteEnAttente && Date.now() - this.voteEnAttente.envoi > 3000) this.renvoyerVote();
     const e = this.etat;
     if (!e || e.finPhase === null || e.pause !== null || e.attenteRegie || e.finPhase === this.retardVerifie) return;
     if (Date.now() + this.decalage < e.finPhase + 4000) return;
@@ -147,9 +167,23 @@ export class Connexion {
         this.etat = m.e;
         this.tsEtat = m.ts;
         break;
-      case 'moi':
-        this.moi = { equipe: m.equipe, vote: m.vote, manche: m.manche };
+      case 'moi': {
+        let attente = this.voteEnAttente;
+        // Changement d'équipe ou de manche : le vote en attente n'a plus de sens.
+        if (attente && (attente.manche !== m.manche || (this.moi !== null && this.moi.equipe !== m.equipe))) {
+          attente = this.voteEnAttente = null;
+        }
+        if (m.ack !== undefined) {
+          // Réponse à un vote que j'ai déjà remplacé par un autre : j'attends la réponse au dernier.
+          if (attente && m.ack < attente.n) break;
+          this.voteEnAttente = null;
+          this.moi = { equipe: m.equipe, vote: m.vote, manche: m.manche };
+        } else {
+          // Message spontané du serveur (reconnexion…) : mon vote en attente est en route, je le garde affiché.
+          this.moi = { equipe: m.equipe, vote: attente ? attente.case : m.vote, manche: m.manche };
+        }
         break;
+      }
       case 'tendance':
         this.tendance = m;
         break;
@@ -182,6 +216,7 @@ export class Connexion {
       case 'pong': {
         const maintenant = Date.now();
         const allerRetour = maintenant - m.c;
+        this.patience = PATIENCE_MIN;
         if (allerRetour >= 0 && allerRetour <= this.meilleurAllerRetour + 30) {
           this.meilleurAllerRetour = Math.min(this.meilleurAllerRetour, allerRetour);
           this.decalage = m.ts + allerRetour / 2 - maintenant;
@@ -209,9 +244,12 @@ export class Connexion {
 
   voter(c: Case): void {
     if (!this.etat || !this.moi) return;
-    // On affiche le vote tout de suite ; le serveur corrigera s'il le refuse.
-    this.moi = { ...this.moi, vote: c, manche: this.etat.manche };
-    this.envoyer({ t: 'vote', manche: this.etat.manche, case: c });
+    // On affiche le vote tout de suite. Il est numéroté : le serveur répond à chaque vote,
+    // et tant que la réponse n'est pas arrivée, on le renvoie (coupure, reconnexion).
+    const attente = { n: ++this.numeroVote, manche: this.etat.manche, case: c, envoi: Date.now() };
+    this.voteEnAttente = attente;
+    this.moi = { ...this.moi, vote: c, manche: attente.manche };
+    this.envoyer({ t: 'vote', manche: attente.manche, case: c, n: attente.n });
   }
 
   renfort(): void {
@@ -227,6 +265,12 @@ export class Connexion {
   }
 
   action(action: ActionRegie): void {
+    // Hors ligne, la commande partirait à la reconnexion, avant que la régie soit
+    // de nouveau reconnue, et serait ignorée sans rien dire : mieux vaut prévenir.
+    if (this.socket.readyState !== WebSocket.OPEN) {
+      this.informer('Connexion perdue : la commande n’est pas partie. Réessayez dans un instant.', true);
+      return;
+    }
     this.envoyer({ t: 'regie', action });
   }
 

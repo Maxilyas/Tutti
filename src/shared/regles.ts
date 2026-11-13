@@ -223,7 +223,8 @@ function comparer(a: Intention, b: Intention): number {
  *     l'équipe, puis tirage au sort) l'obtient ; les autres ne bougent pas.
  *  4. Si la case visée est occupée par un pion non verrouillé, les deux pions
  *     échangent leurs places : personne n'est jamais bloqué.
- *  5. Tout pion qui termine sur sa case cible est verrouillé.
+ *  5. Tout pion qui arrive sur sa case cible y reste et est verrouillé, même s'il y
+ *     est poussé par un échange alors que son équipe visait ailleurs (« coup de chance »).
  */
 export function resoudreManche(
   pions: readonly PionJeu[],
@@ -259,8 +260,9 @@ export function resoudreManche(
     const moi = intention.pion.couleur;
     const dest = intention.dest!;
     const ici = position.get(moi)!;
-    if (dest === ici) {
-      reclamees.add(dest);
+    // Déjà sur sa case (un échange vient de l'y pousser) : il y reste, quel que soit le vote de son équipe.
+    if (dest === ici || ici === intention.pion.cible) {
+      reclamees.add(ici);
       continue;
     }
     if (reclamees.has(dest) || verrouillees.has(dest)) {

@@ -28,7 +28,7 @@ import {
   silhouetteDe,
   tousPlaces,
 } from '../shared/regles';
-import { SCENARIO_DEFAUT, copier, nettoyerDurees, nettoyerOptions, validerScenario, LIMITES } from '../shared/scenario';
+import { copier, nettoyerDurees, nettoyerOptions, validerScenario, LIMITES } from '../shared/scenario';
 import type {
   EtatPublic,
   EtatRegie,
@@ -39,6 +39,8 @@ import type {
   Scenario,
   StatsEquipe,
 } from '../shared/types';
+
+import { SCENARIO_DEFAUT } from './scenarioDefaut';
 
 export interface Env {
   GameRoom: DurableObjectNamespace<GameRoom>;
@@ -75,6 +77,8 @@ interface Sauvegarde {
   votes: Record<string, Case>;
   pin: { sel: string; hache: string } | null;
   jetons: string[];
+  /** Essais de code ratés (enregistrés : un redémarrage du serveur ne remet pas le compteur à zéro). */
+  securite: { echecs: number; depuis: number };
 }
 
 interface EtatConnexion {
@@ -88,6 +92,7 @@ const MAX_JOUEURS = 600;
 const MAX_SIMULES = 300;
 const MAX_JOURNAL = 40;
 const TAILLE_MESSAGE_MAX = 64_000;
+const ESSAIS_PIN_PAR_MINUTE = 5;
 const PHASES_DE_JEU: readonly Phase[] = ['vote', 'affichage', 'deplacement'];
 
 function nouvelleSauvegarde(): Sauvegarde {
@@ -112,6 +117,7 @@ function nouvelleSauvegarde(): Sauvegarde {
     votes: {},
     pin: null,
     jetons: [],
+    securite: { echecs: 0, depuis: 0 },
   };
 }
 
@@ -145,7 +151,6 @@ export class GameRoom extends Server<Env> {
   private minuterieTendances: ReturnType<typeof setTimeout> | null = null;
   private equipesModifiees = new Set<Couleur>();
   private debit = new Map<string, { n: number; depuis: number }>();
-  private echecsPin = { n: 0, depuis: 0 };
 
   // -------------------------------------------------------------------------
   // Cycle de vie
@@ -206,7 +211,7 @@ export class GameRoom extends Server<Env> {
         this.envoyer(connexion, { t: 'pong', c: Number(message.c) || 0, ts: Date.now() });
         return;
       case 'vote':
-        if (etat.role === 'joueur') this.voter(connexion, etat.id, message.manche, message.case);
+        if (etat.role === 'joueur') this.voter(connexion, etat.id, message.manche, message.case, message.n);
         return;
       case 'renfort':
         if (etat.role === 'joueur') this.renforcer(connexion, etat.id);
@@ -376,12 +381,10 @@ export class GameRoom extends Server<Env> {
     const e = this.e;
     if (!this.enJeu()) return;
     const ajout = Math.min(120, Math.max(1, Math.round(secondes))) * 1000;
-    if (e.pause !== null) {
-      e.pause += ajout;
-    } else {
-      e.finPhase = Math.max(e.finPhase ?? 0, Date.now()) + ajout;
-      e.attenteRegie = false;
-    }
+    if (e.pause !== null) e.pause += ajout;
+    else e.finPhase = Math.max(e.finPhase ?? 0, Date.now()) + ajout;
+    // Le chrono repart : la phase n'attend plus la régie.
+    e.attenteRegie = false;
     e.dureePhase += ajout;
   }
 
@@ -538,19 +541,23 @@ export class GameRoom extends Server<Env> {
     return pion ? casesVotables(pion, pions, optionsVote(this.e.scenario)) : [];
   }
 
-  private voter(connexion: Connection<EtatConnexion>, id: string, manche: unknown, c: unknown): void {
+  private voter(connexion: Connection<EtatConnexion>, id: string, manche: unknown, c: unknown, numero: unknown): void {
     const e = this.e;
     const equipe = e.joueurs[id]?.equipe;
+    // Le téléphone numérote ses votes : on lui répond toujours, pour qu'il sache ce qui a été retenu.
+    const ack = typeof numero === 'number' && Number.isFinite(numero) ? numero : undefined;
     if (e.phase !== 'vote' || manche !== e.manche || !equipe || !estCase(c) || !this.votablesPour(equipe).includes(c)) {
       // Le téléphone est en retard ou la case n'est plus disponible : on le remet à jour.
-      this.envoyerMoi(connexion, id);
+      this.envoyerMoi(connexion, id, ack);
       return;
     }
-    if (e.votes[id] === c) return;
-    e.votes[id] = c;
-    this.equipesModifiees.add(equipe);
-    this.diffuserTendancesBientot();
-    this.sauverBientot();
+    if (e.votes[id] !== c) {
+      e.votes[id] = c;
+      this.equipesModifiees.add(equipe);
+      this.diffuserTendancesBientot();
+      this.sauverBientot();
+    }
+    if (ack !== undefined) this.envoyerMoi(connexion, id, ack);
   }
 
   /** Mode répétition : les joueurs simulés votent chacun à leur moment. */
@@ -605,9 +612,14 @@ export class GameRoom extends Server<Env> {
       return;
     }
     const pin = typeof message.pin === 'string' ? message.pin : '';
+    // Pas plus de 5 codes faux par minute, toutes connexions confondues.
+    const securite = this.e.securite;
     const maintenant = Date.now();
-    if (maintenant - this.echecsPin.depuis > 60_000) this.echecsPin = { n: 0, depuis: maintenant };
-    if (this.echecsPin.n >= 8) {
+    if (maintenant - securite.depuis > 60_000) {
+      securite.echecs = 0;
+      securite.depuis = maintenant;
+    }
+    if (securite.echecs >= ESSAIS_PIN_PAR_MINUTE) {
       this.envoyer(connexion, { t: 'auth', ok: false, raison: 'Trop d’essais. Réessayez dans une minute.' });
       return;
     }
@@ -619,7 +631,8 @@ export class GameRoom extends Server<Env> {
       return;
     }
     if (!correct) {
-      this.echecsPin.n++;
+      securite.echecs++;
+      this.sauver();
       this.envoyer(connexion, { t: 'auth', ok: false, raison: 'Code incorrect.' });
       return;
     }
@@ -679,6 +692,9 @@ export class GameRoom extends Server<Env> {
         break;
       case 'suivant':
         if (!this.enJeu()) return;
+        // La régie a cliqué sur une phase qui est déjà passée (double clic, chrono
+        // terminé au même instant) : on n'en saute pas une deuxième.
+        if ((action.phase !== undefined && action.phase !== e.phase) || (action.manche !== undefined && action.manche !== e.manche)) return;
         if (e.pause !== null) this.reprendre();
         this.avancer();
         break;
@@ -835,7 +851,8 @@ export class GameRoom extends Server<Env> {
       // On repasse en automatique alors que le chrono est écoulé : on enchaîne.
       if (reglages.avanceAuto && this.e.attenteRegie) {
         this.e.attenteRegie = false;
-        this.e.finPhase = Date.now();
+        // En pause, il ne reste plus de temps : la suite s'enchaînera à la reprise.
+        if (this.e.pause === null) this.e.finPhase = Date.now();
       }
     }
   }
@@ -981,12 +998,13 @@ export class GameRoom extends Server<Env> {
     }
   }
 
-  private envoyerMoi(connexion: Connection, id: string): void {
+  private envoyerMoi(connexion: Connection, id: string, ack?: number): void {
     this.envoyer(connexion, {
       t: 'moi',
       equipe: this.e.joueurs[id]?.equipe ?? null,
       vote: this.e.votes[id] ?? null,
       manche: this.e.manche,
+      ...(ack === undefined ? {} : { ack }),
     });
   }
 

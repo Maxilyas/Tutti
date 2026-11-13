@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { departsEffectifs, etatsInitiaux, silhouetteDe } from '../../src/shared/regles';
-import { DUREES_DEFAUT, SCENARIO_DEFAUT, copier, validerScenario } from '../../src/shared/scenario';
+import { SCENARIO_DEFAUT } from '../../src/server/scenarioDefaut';
+import { DUREES_DEFAUT, copier, validerScenario } from '../../src/shared/scenario';
 
 describe('scénario du concert', () => {
   it('vise 3 à 5 minutes : une manche dure 50 secondes, la première une minute', () => {

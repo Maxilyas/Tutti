@@ -18,6 +18,8 @@ export class Client {
   /** Tous les messages reçus, bruts (pour vérifier ce qui circule). */
   bruts: string[];
   ouvert: Promise<Client>;
+  /** Fonctions appelées à chaque message reçu. */
+  ecouteurs: Set<(message: Record<string, unknown>) => void>;
   envoyer(message: unknown): void;
   brut(texte: string): void;
   action(action: ActionRegie): void;
