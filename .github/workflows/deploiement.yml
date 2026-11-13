@@ -1,0 +1,51 @@
+name: Mise en ligne
+
+# Met l'application en ligne chez Cloudflare à chaque modification de la branche main.
+# Il faut deux secrets dans le dépôt GitHub (Settings → Secrets and variables → Actions) :
+#   CLOUDFLARE_API_TOKEN et CLOUDFLARE_ACCOUNT_ID.
+# Tant qu'ils n'existent pas, la mise en ligne est simplement ignorée.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mise-en-ligne
+  cancel-in-progress: false
+
+jobs:
+  deployer:
+    name: Déploiement Cloudflare
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Les secrets Cloudflare sont-ils configurés ?
+        id: secrets
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "presents=oui" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Secrets Cloudflare absents : mise en ligne ignorée (voir le README)."
+          fi
+      - uses: actions/checkout@v4
+        if: steps.secrets.outputs.presents == 'oui'
+      - uses: actions/setup-node@v4
+        if: steps.secrets.outputs.presents == 'oui'
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: steps.secrets.outputs.presents == 'oui'
+      - name: Tests du moteur de jeu
+        if: steps.secrets.outputs.presents == 'oui'
+        run: npm test
+      - name: Construction et mise en ligne
+        if: steps.secrets.outputs.presents == 'oui'
+        run: npm run deploy

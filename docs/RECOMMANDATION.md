@@ -1,720 +1,443 @@
 # Tutti — Puzzle musical
 
-**Recommandation technique, design et plan de mise en œuvre (100 % gratuit)**
+**Cadrage, décisions et conception** · version 2, après les retours de l'équipe artistique
 
-> Document de cadrage rédigé à partir du croquis « Puzzle musical » et du message de présentation du projet.
-> Il sert de base de discussion avec l'équipe artistique, puis de cahier des charges pour l'implémentation.
+> La version 1 de ce document proposait une conception. Cette version 2 intègre les retours reçus
+> et décrit **ce qui a été construit**. L'application est dans ce dépôt ; pour l'utiliser, voir le
+> [README](../README.md) et le [guide de régie](GUIDE-REGIE.md).
 
 ---
 
 ## Sommaire
 
 0. [Résumé](#0-résumé)
-1. [Ce que j'ai compris du projet](#1-ce-que-jai-compris-du-projet)
-2. [Points à clarifier et incohérences repérées](#2-points-à-clarifier-et-incohérences-repérées)
-3. [Règles du jeu proposées](#3-règles-du-jeu-proposées-spécification-fonctionnelle)
-4. [Conception des énigmes](#4-conception-des-énigmes-game-design)
-5. [Architecture technique](#5-architecture-technique)
-6. [Design UX / UI](#6-design-ux--ui)
-7. [Musique et scène](#7-musique-et-scène)
-8. [Réseau et matériel le jour J](#8-réseau-et-matériel-le-jour-j)
-9. [Tests et répétitions](#9-tests-et-répétitions)
-10. [Plan d'implémentation](#10-plan-dimplémentation)
+1. [Le projet](#1-le-projet)
+2. [Les retours et ce qu'ils ont changé](#2-les-retours-et-ce-quils-ont-changé)
+3. [Trois points à confirmer](#3-trois-points-à-confirmer)
+4. [Les règles du jeu](#4-les-règles-du-jeu)
+5. [Les énigmes](#5-les-énigmes)
+6. [Les écrans](#6-les-écrans)
+7. [Architecture technique](#7-architecture-technique)
+8. [Scène, réseau et jour J](#8-scène-réseau-et-jour-j)
+9. [Tests](#9-tests)
+10. [Ce qui reste à faire avant le concert](#10-ce-qui-reste-à-faire-avant-le-concert)
 11. [Coûts](#11-coûts)
-12. [Questions à poser à l'équipe artistique](#12-questions-à-poser-à-léquipe-artistique)
 
 ---
 
 ## 0. Résumé
 
-| Sujet | Recommandation |
+| Sujet | Décision |
 |---|---|
-| **Type d'appli** | **Web app** (pas d'appli à installer) : le public scanne un QR code et joue dans son navigateur. iOS et Android, aucun store, aucun compte. |
-| **Langage** | **TypeScript** côté client et serveur (un seul langage, types partagés). |
-| **Interface** | **Svelte 5 + Vite** : très léger (important avec une 4G faible dans une salle), simple à lire et à maintenir. |
-| **Temps réel / serveur** | **Cloudflare Workers + Durable Objects** (offre gratuite) avec la librairie **PartyServer / PartySocket** : un « salon de jeu » unique qui garde l'état de la partie, gère les chronos et diffuse en WebSocket à tous les écrans. |
-| **Hébergement** | Gratuit sur `*.workers.dev`, HTTPS inclus, pas de mise en veille, déploiement en une commande. |
-| **Plan de secours** | Le même code tourne **en local sur l'ordinateur de régie** (réseau Wi‑Fi de la salle), plus un **mode manuel** piloté par la régie si le réseau tombe. |
-| **Écrans** | 4 vues d'une même appli : **Joueur** (smartphone), **Grand écran** (public), **Retour musiciens** (face à la scène), **Régie** (pilotage). |
-| **Design** | Interface sombre (salle de concert), 6 couleurs **+ un symbole par couleur** (daltonisme), très gros caractères, clignotements ≤ 3 par seconde. |
-| **Point de game design critique** | Les énigmes d'exemple ont **plusieurs solutions possibles**. Il faut soit **montrer la silhouette** de la figure au public, soit ajouter des indices « absolus » (ligne, colonne, registre). Voir §4. |
-| **Coût** | **0 €** de logiciel. Seuls frais éventuels : adhésif de marquage au sol, chasubles de couleur, impression des QR codes. |
+| **Type d'appli** | Web app : le public scanne un QR code et joue dans son navigateur. Rien à installer, aucun compte. |
+| **Musiciens** | **7 pions** : rouge, orange, jaune, vert, bleu, violet et **rose**. Un musicien absent se gère d'une case à cocher. |
+| **Grille** | 5 × 5. **Lettre (A → E) = colonne = boucle**, **chiffre (1 → 5) = rangée = registre** (1 très aigu, 5 très grave). |
+| **Figure** | La **silhouette** est montrée (cases en pointillés, sans couleur). Les énigmes servent à trouver quelle couleur va où. |
+| **Énigmes** | De **placement** au départ, affichées à tous. Des **indices musicaux** arrivent après des échecs. |
+| **Équipes** | QR code unique, répartition **automatique et aléatoire**, équipes égales à un joueur près. |
+| **Manche** | Vote (20 s) → Résultat (15 s) → Déplacement (15 s). Durées réglables en direct, pause et avance manuelle possibles. |
+| **Durée** | 3 à 5 minutes visées, soit 3 à 5 manches. Au-delà de 4 min 30, la régie est invitée à révéler les pions restants. |
+| **Écrans** | **Téléphone** du public, **grand écran** unique (vu par le public et par les musiciens), **régie**. |
+| **Technique** | TypeScript, Svelte 5, Cloudflare Workers + Durable Objects (offre gratuite). |
+| **Coût** | **0 €** de logiciel et d'hébergement. |
 
 ---
 
-## 1. Ce que j'ai compris du projet
+## 1. Le projet
 
-### 1.1 Le concept
+Une performance musicale contemporaine en forme de puzzle, pour un concert de fin d'année
+(salle Louise Labé, Saint-Symphorien-d'Ozon) devant un public familial de 50 à 100 personnes.
 
-- Performance musicale contemporaine en forme de **puzzle** : les musicien·ne·s sont les **pions**, le public est le **joueur**.
-- Au sol, une **grille 5×5** : lignes **A → E**, colonnes **1 → 5** (cases A1 … E5).
-- **1 musicien·ne = 1 couleur** (vêtement). Le croquis en montre **6** : rouge, jaune, violet, orange, vert, bleu.
-- Le public est réparti en **équipes, une par couleur**. Chaque équipe dispose d'une **phrase-énigme** et vote sur smartphone pour la case où doit aller « son » musicien.
-- Objectif : reconstituer une **figure cible prédéfinie**.
-- Chaque manche se déroule en 3 temps : **vote → affichage → déplacement** (le déplacement fait « muter » la texture sonore).
-- Retour visuel : **erreur = la case clignote dans la couleur de l'équipe**, **bonne réponse = la case se grise**, et le musicien ne bouge plus jusqu'à la fin.
-- Musique : chaque case correspond à une **boucle** et à une **tessiture** différentes.
-- Notes du croquis : « Décision à l'écran toutes les **15 secondes** », « 1 équipe = une énigme ».
-- Jauge : **50 à 100 participants**.
+- Au sol, une **grille de 5 × 5 cases** de 70 cm de côté (3,50 m × 3,50 m).
+- **7 élèves musiciens** (violons, flûtes, violoncelles joués debout) sont les **pions**. Chacun porte une couleur.
+- Le public est réparti en **7 équipes**, une par couleur. Chaque équipe vote sur smartphone pour déplacer
+  « son » musicien, à l'aide d'une **énigme**.
+- Le but : reconstituer une **figure** prédéfinie.
+- À chaque déplacement, la musique change : la **lettre** de la case donne la boucle jouée, le **chiffre**
+  donne le registre. Les musiciens connaissent leur partie par cœur.
 
-### 1.2 Lecture du croquis
-
-**Figure cible** (grande grille) :
+### 1.1 La grille
 
 ```
-        1        2        3        4        5
-A  (aigu)   .     ROUGE      .        .        .
-B           .       .      JAUNE      .        .
-C (medium) VIOLET   .        .        .        .
-D           .       .        .        .      ORANGE
-E (grave)   .      VERT     BLEU      .        .
+            A      B      C      D      E        ← la lettre : la boucle
+        ┌──────┬──────┬──────┬──────┬──────┐
+   1    │      │ROUGE │      │      │      │     très aigu
+        ├──────┼──────┼──────┼──────┼──────┤
+   2    │      │      │JAUNE │      │      │     aigu
+        ├──────┼──────┼──────┼──────┼──────┤
+   3    │VIOLET│      │      │      │      │     medium
+        ├──────┼──────┼──────┼──────┼──────┤
+   4    │      │      │ ROSE │      │ORANGE│     grave
+        ├──────┼──────┼──────┼──────┼──────┤
+   5    │      │ VERT │ BLEU │      │      │     très grave
+        └──────┴──────┴──────┴──────┴──────┘
+   ↑ le chiffre : le registre                    La figure à reconstituer
 ```
 
-→ Rouge **A2** · Jaune **B3** · Violet **C1** · Orange **D5** · Vert **E2** · Bleu **E3**
+« **B1** » désigne donc la deuxième case de la rangée du haut.
 
-**Position initiale** (petite grille en bas à gauche, *lecture à confirmer*) :
-Bleu A3 · Orange A5 · Vert B4 · Jaune C2 · Rouge D4 · Violet E1 (aucun pion ne démarre sur sa case cible, c'est bien).
+### 1.2 Le scénario du concert
 
-**Énigmes d'exemple** : toutes sont **vraies** pour la figure cible :
+| Pion | Départ | À trouver | Énigme de placement | Indices musicaux |
+|---|---|---|---|---|
+| Rouge ■ | D4 | **B1** | Le rouge est plus haut que le vert. | Le rouge joue dans le très aigu. · Le rouge joue la boucle B. |
+| Orange ▲ | E1 | **E4** | L'orange veut être seul. | L'orange joue dans le grave. · L'orange joue la boucle E. |
+| Jaune ★ | B3 | **C2** | Le jaune se trouve à 3 cases du bleu. | Le jaune joue dans l'aigu. · Le jaune joue la boucle C. |
+| Vert ● | D2 | **B5** | Le vert est à côté du bleu. | Le vert joue dans le très grave. · Le vert joue la boucle B. |
+| Bleu ◆ | C1 | **C5** | Le bleu est à côté du vert. | Le bleu joue dans le très grave. · Le bleu joue la boucle C. |
+| Violet ✚ | A5 | **A3** | Le violet veut être seul, tout à gauche. | Le violet joue dans le medium. · Le violet joue la boucle A. |
+| Rose ♥ | E4 | **C4** | Le rose est au-dessus du bleu. | Le rose joue dans le grave. · Le rose joue la boucle C. |
 
-| Énigme | Vérification sur la figure |
-|---|---|
-| Le bleu doit être à côté du vert | E3 touche E2 ✔ |
-| Le jaune se trouve à 3 cases du bleu | B3 → E3 = 3 cases en ligne droite ✔ |
-| Le rouge doit être plus haut que le vert | A2 est au-dessus de E2 ✔ |
-| Le violet veut être seul | C1 n'a aucun voisin ✔ |
-| L'orange veut être seul | D5 n'a aucun voisin ✔ |
-| Le vert doit être à côté du bleu | E2 touche E3 ✔ |
+Ce scénario est dans le fichier [`scenarios/concert.json`](../scenarios/concert.json). Tout se modifie
+depuis la régie (onglet **Scénario**), sans toucher au code.
 
 ---
 
-## 2. Points à clarifier et incohérences repérées
+## 2. Les retours et ce qu'ils ont changé
 
-Ces points changent la conception. Ils sont à trancher **avant** de développer.
-
-### 2.1 Tessiture : par ligne ou par colonne ?
-
-- **Le croquis** place la flèche *Aigu → Medium → Grave* sur l'**axe vertical** : la **ligne** (A…E) donne la tessiture.
-- **Le message** dit l'inverse : « une boucle par ligne et une tessiture par colonne ».
-
-➡️ À trancher. L'appli rendra ce choix **paramétrable**. Par défaut, on suit le croquis : **ligne = tessiture** (A aigu → E grave), **colonne = boucle** (1 → 5). C'est aussi plus intuitif : « plus haut » sur l'écran = plus aigu.
-
-### 2.2 Les énigmes ont plusieurs solutions
-
-« Le bleu doit être à côté du vert » est vrai pour des dizaines de positions. Si l'appli valide **une case exacte** (celle de la figure), le public ne peut pas la **déduire** : il ne peut que la **deviner**. Résultat probable : frustration et partie très longue.
-
-Deux façons de corriger (détails au §4) :
-
-1. **Montrer la silhouette** de la figure (les 6 cases cibles, sans les couleurs). Les énigmes servent alors à savoir **quelle couleur va où**. Avec la silhouette, les énigmes d'exemple résolvent **presque** toute la figure : il manque **un seul indice** pour départager violet et orange.
-2. **Écrire des énigmes « ancrées »** (ligne, colonne, registre, bord, coin) qui désignent une case unique.
-
-### 2.3 Le vocabulaire des énigmes doit être défini
-
-« À côté », « à 3 cases », « seul », « plus haut » peuvent être compris de plusieurs façons. Proposition de **lexique officiel**, affiché dans l'aide de l'appli :
-
-| Mot | Définition proposée |
+| Retour | Ce qui a été fait |
 |---|---|
-| **à côté de** | la case touche par un **côté** (haut, bas, gauche, droite ; pas en diagonale) |
-| **à N cases de** | N cases **en ligne droite** (même ligne ou même colonne) |
-| **seul** | aucune des **8 cases autour** n'est occupée (diagonales comprises) |
-| **plus haut / plus bas** | sur une **ligne** au-dessus / en dessous (= plus aigu / plus grave) |
-| **à gauche / à droite** | dans une **colonne** avant / après |
-| **dans l'aigu / le medium / le grave** | ligne A / C / E (B et D = « medium-aigu » et « medium-grave ») |
-
-### 2.4 Autres décisions à prendre
-
-- **Collisions** : deux équipes votent pour la même case, ou une équipe vote pour une case déjà occupée. Une règle est proposée au §3.4.
-- **Déplacement même en cas d'erreur** : on suppose que **oui**. Le musicien va sur la case votée même si elle est fausse : c'est ce qui fait évoluer le son à chaque manche.
-- **Équipes qui ont trouvé** : que font leurs membres ensuite ? Proposition au §3.8.
-- **Durée visée** de la performance : elle détermine la difficulté des énigmes et le nombre de « tableaux ».
-- **Énigmes visibles par tous ou seulement par l'équipe concernée** (§4.4).
+| **Numérotation** : lettre A → E et chiffre 1 → 5, « la boucle A est très aiguë en 1 et très grave en 5 ». | La lettre est la colonne (la boucle), le chiffre est la rangée (le registre, aigu en haut). Les cases du croquis d'origine ont été renommées sans bouger : voir §3.1. |
+| **Un 7ᵉ musicien, rose.** Figure en C4, départ en E4, énigme « le rose est au-dessus du bleu ». | Ajouté. C4 est juste au-dessus du bleu (C5) : l'énigme est exacte. |
+| **Un musicien absent le jour J ?** | Une case à cocher dans la régie. Le pion devient un « fantôme » posé sur sa case : les énigmes des autres restent justes, et son équipe est répartie dans les autres. Voir §4.7. |
+| **Montrer la silhouette** de la figure. | Fait : les 7 cases apparaissent en pointillés sur tous les écrans. |
+| **Durée : 3 à 5 minutes.** | Une manche dure 50 s et la partie se joue en 3 à 5 manches (voir §4.8). Une alerte s'affiche en régie à 4 min 30 et propose de révéler les pions restants. Durées réglables. |
+| **Pas besoin d'afficher la boucle et le registre** à jouer. | L'écran ne montre que les cases (« D4 → B1 »). Les registres ne figurent que comme repère discret, pour que le public comprenne les indices musicaux. |
+| **Un seul écran**, vu de tous (vidéoprojecteur ou panneaux LED). | L'écran « retour musiciens » a été supprimé. Le grand écran affiche chaque déplacement en très gros, par couleur. |
+| **Un affichage plus long**, pour que les enfants anticipent ; **pouvoir reprendre la main**. | Résultat affiché 15 s, puis 15 s pour se déplacer (réglables). La régie a Pause, +10 s, Phase suivante, et un mode où chaque phase attend son feu vert. |
+| **Pas de mesures ni de tempo** : tout est hors tempo. | L'option « caler les phases sur le tempo » a été abandonnée. |
+| **Énigmes de placement au départ, indices musicaux ensuite.** | Chaque pion a une énigme et jusqu'à 4 indices, révélés tous les 2 échecs ou à la main par la régie. |
+| **Répartition aléatoire**, pas de choix de couleur ; pas d'équipe vide. | Chaque arrivant rejoint l'équipe la moins nombreuse, au hasard en cas d'égalité. Les 7 premiers forment 7 équipes. |
+| **Temps limite** au-delà duquel la régie révèle les pions restants. | Fait : bouton « Révéler les pions restants », rappelé par une alerte quand la durée visée est dépassée. |
+| **QR code unique.** | Fait. Il s'affiche en grand sur l'écran avant le lancement. |
+| **Énigmes publiques** sur le grand écran, en plus de celle de son équipe sur le téléphone. | Fait. Le téléphone donne aussi accès à toutes les énigmes et à un lexique. |
+| **Position de départ fixe**, celle de la petite grille du croquis. | Fait (voir §1.2). |
+| **Vote par appareil.** | Fait : une voix par téléphone et par manche, modifiable jusqu'à la fin du chrono. |
 
 ---
 
-## 3. Règles du jeu proposées (spécification fonctionnelle)
+## 3. Trois points à confirmer
 
-### 3.1 Rôles et écrans
+Ces choix ont été faits pour avancer. Chacun se corrige en quelques clics dans la régie.
 
-| Vue | Appareil | URL indicative | Rôle |
-|---|---|---|---|
-| **Joueur** | smartphone du public | `/` | rejoindre une équipe, lire l'énigme, voter |
-| **Grand écran** | ordinateur + vidéoprojecteur | `/ecran` | QR code d'accès, grille, chronos, état des équipes |
-| **Retour musiciens** | écran ou TV face à la scène | `/scene` | où aller, quand bouger, quelle boucle et quel registre jouer |
-| **Régie** | ordinateur ou tablette (code PIN) | `/regie` | lancer, mettre en pause, corriger, donner des indices, superviser |
+### 3.1 La figure n'a pas bougé, ses cases ont changé de nom
 
-### 3.2 Cycle d'une manche (machine à états)
+Le croquis d'origine nommait les rangées par des lettres et les colonnes par des chiffres. Avec la nouvelle
+numérotation, chaque case garde sa place **physique** et reçoit un nouveau nom :
+
+| Pion | Croquis d'origine | Nouvelle numérotation |
+|---|---|---|
+| Rouge | A2 | **B1** |
+| Jaune | B3 | **C2** |
+| Violet | C1 | **A3** |
+| Orange | D5 | **E4** |
+| Vert | E2 | **B5** |
+| Bleu | E3 | **C5** |
+
+C'est la seule lecture pour laquelle toutes les énigmes restent vraies (« le rouge est plus haut que le
+vert », « le rose est au-dessus du bleu »…). Pour le rose, **C4** et **E4** ont été lus dans la nouvelle
+numérotation, celle du message qui les annonçait.
+
+### 3.2 Le rose démarre sur la case à trouver de l'orange
+
+Le départ du rose (E4) est aussi la case que l'orange doit trouver. Ce n'est pas un problème pour le jeu :
+quand l'équipe orange vote E4, les deux musiciens échangent leurs places. Si ce n'était pas voulu, il suffit
+de changer la case de départ du rose.
+
+Conséquence prise en compte : si l'orange est **absent**, son pion fantôme occupe E4. Le rose démarre alors
+automatiquement sur la case de départ de l'orange (E1). La régie l'annonce dans l'onglet Scénario.
+
+### 3.3 « Le violet veut être seul, tout à gauche »
+
+Avec les énigmes proposées, le violet et l'orange « veulent être seuls » tous les deux, et la figure a deux
+cases isolées (A3 et E4) : ils étaient **interchangeables**. La précision « tout à gauche » a été ajoutée à
+l'énigme du violet pour que la solution soit unique. Le vérificateur de la régie signale ce genre
+d'ambiguïté ; l'énigme peut être réécrite autrement.
+
+---
+
+## 4. Les règles du jeu
+
+### 4.1 Une manche en trois temps
 
 ```
- ┌────────┐ lancement ┌────────┐ fin chrono ┌───────────┐ fin chrono ┌─────────────┐
- │ ACCUEIL│──────────▶│  VOTE  │───────────▶│ AFFICHAGE │───────────▶│ DÉPLACEMENT │
- └────────┘           └────────┘            └───────────┘            └──────┬──────┘
-                          ▲                                                 │
-                          │            il reste des pions à placer          │
-                          └─────────────────────────────────────────────────┤
-                                                                            │ tous placés
-                                                                            ▼
-            PAUSE (depuis n'importe quel état, via la régie)          ┌──────────┐
-                                                                      │  FINAL   │
-                                                                      └──────────┘
+   ACCUEIL ──lancer──▶ VOTE ──▶ RÉSULTAT ──▶ DÉPLACEMENT ──┬──▶ FINAL  (tous les pions sont en place)
+                         ▲                                  │
+                         └──────────  manche suivante  ◀────┘
 ```
 
 | Phase | Durée par défaut | Ce qui se passe |
 |---|---|---|
-| **Vote** | 15 s (cf. croquis) | Chaque équipe non résolue vote pour une case. On peut changer d'avis jusqu'à la fin du chrono. |
-| **Affichage** | 5 s | Pour chaque équipe : case retenue + flèche depuis la position actuelle. **Grisé** si c'est juste, **clignotement** si c'est faux. |
-| **Déplacement** | 10 s | Les musiciens rejoignent leur case et changent de boucle et de registre : la texture sonore mute. |
+| **Vote** | 20 s (30 s à la première manche) | Chaque équipe encore en jeu choisit une case. On peut changer d'avis jusqu'à la fin. |
+| **Résultat** | 15 s | Une flèche montre le trajet de chaque musicien. La bonne case **se grise**, la mauvaise **clignote** dans la couleur de l'équipe. Les musiciens se préparent. |
+| **Déplacement** | 15 s | Les musiciens changent de case : la musique change. |
 
-→ Environ **30 s par manche**. Durées **réglables en direct** depuis la régie. Option : les exprimer **en mesures** pour qu'elles tombent en rythme (§7.2).
+Toutes les équipes votent en même temps. La régie peut mettre en pause, ajouter 10 secondes, passer à la
+phase suivante, ou désactiver l'enchaînement automatique : chaque phase attend alors son feu vert.
 
-Toutes les équipes votent **en même temps** à chaque manche (plutôt qu'un pion après l'autre). C'est plus dynamique et le son mute davantage.
+### 4.2 Le vote d'une équipe
 
-### 3.3 Dépouillement du vote (par équipe)
+1. Un téléphone = une voix par manche. La dernière case touchée compte.
+2. La case qui reçoit **le plus de voix** est retenue. En cas d'égalité, tirage au sort.
+3. Sans aucun vote, le musicien reste sur place.
+4. On ne peut pas voter pour une case **verrouillée** (un pion y est en place), ni pour une case
+   **déjà essayée** par son équipe : elle est barrée d'une croix.
+5. Chaque joueur voit en direct les votes de son équipe, pour se mettre d'accord sans se parler.
 
-1. Un appareil = une voix par manche. On peut la modifier pendant la phase de vote ; seule la dernière compte.
-2. Les **cases verrouillées** (pions déjà bien placés) ne sont **pas votables**.
-3. La case retenue est celle qui a **le plus de voix**.
-4. **Égalité** : tirage au sort entre les cases ex æquo.
-5. **Aucun vote** : le pion reste sur place.
-
-### 3.4 Résolution des conflits
+### 4.3 Quand deux équipes se gênent
 
 | Situation | Règle |
 |---|---|
-| Deux équipes visent **la même case libre** | L'équipe avec **le plus de voix** l'obtient, puis celle avec le plus fort **pourcentage de son équipe**, puis tirage au sort. L'autre pion **reste sur place**, avec la mention « case disputée ». |
-| Une équipe vise une case **occupée par un pion qui ne bouge pas** (et non verrouillé) | **Échange** : les deux musiciens permutent. Simple à exécuter sur scène et jamais bloquant. Désactivable. |
-| Chaînes et cycles (A va chez B, B chez C, C chez A) | Tout le monde bouge. L'algorithme traite les déplacements par ordre de force du vote ; il est déterministe et couvert par des tests. |
+| Une équipe vote **sa bonne case** | Elle l'obtient **toujours**, même si une autre équipe la voulait aussi. |
+| Deux équipes visent la même case (fausse pour les deux) | La plus forte l'emporte : plus de voix, puis plus forte part de l'équipe, puis tirage au sort. L'autre ne bouge pas (« case prise »). |
+| La case visée est occupée par un pion qui ne bouge pas | Les deux musiciens **échangent leurs places**. Personne n'est jamais bloqué. |
 
-### 3.5 Validation et verrouillage
+Tout pion qui termine sur sa case est verrouillé, même s'il y arrive par un échange (« coup de chance »).
 
-- **Mode recommandé : « case exacte »**. Un pion est **juste** si sa case après déplacement est **sa case cible**. Il est alors **verrouillé** et sa case est grisée.
-- Un pion déplacé par un échange qui tombe sur sa cible est aussi verrouillé (coup de chance assumé).
-- *Option future : mode « contraintes ».* Un pion est validé dès que son énigme est vraie. Plusieurs figures finales deviennent possibles, donc chaque représentation est différente. Plus ouvert, mais la figure finale n'est plus maîtrisée par la composition.
+### 4.4 Bon ou mauvais choix
 
-### 3.6 Retour visuel (bon ou mauvais choix)
-
-| Événement | Grand écran / retour | Smartphone de l'équipe |
+| | Grand écran | Téléphone de l'équipe |
 |---|---|---|
-| **Juste** | La case **se grise** et affiche un cadenas. Un liseré de la couleur reste visible pour savoir qui est là. | « Bravo ! » plein écran, puis la case grisée avec un cadenas. |
-| **Faux** | La case **pulse dans la couleur de l'équipe** pendant l'affichage (≤ 2 pulsations/s). | Pulsation, puis la case reste marquée **✕** dans l'**historique** de l'équipe, pour ne pas revoter la même erreur. |
-| **Case disputée / perdue** | Icône ⚔ sur la case | « Une autre équipe a pris cette case » |
+| **Juste** | La case se grise, un cadenas apparaît, la carte de l'équipe affiche « En place ». | « Bravo ! » |
+| **Faux** | La case clignote dans la couleur de l'équipe (moins de 2 fois par seconde), la carte affiche « Raté ». | « Raté », puis la case reste barrée d'une croix. |
 
-L'**historique des cases déjà essayées** (✕) n'est visible que sur les téléphones de l'équipe. C'est l'aide la plus efficace et la moins intrusive.
+### 4.5 Les indices
 
-### 3.7 Indices progressifs (contre le blocage)
+Chaque pion peut avoir jusqu'à 4 indices. Un indice est révélé **tous les 2 échecs** (réglable), ou à la
+main par la régie. Il s'affiche sur les téléphones de l'équipe et sur le grand écran.
 
-Paramétrables dans le scénario et déclenchables à la main depuis la régie :
+### 4.6 Fin de partie
 
-| Après N échecs | Indice |
+- Quand une équipe a trouvé, ses joueurs peuvent **aider une autre équipe** (bouton sur le téléphone).
+- La partie se termine quand tous les pions sont en place : c'est le *tutti*.
+- Si la partie s'éternise, la régie **révèle les pions restants** : ils rejoignent directement leur case.
+
+### 4.7 Un musicien absent
+
+Dans la régie, avant de lancer, on coche « Musicien absent » sur sa ligne.
+
+- Son pion reste affiché en **fantôme** sur sa case à trouver. Les énigmes qui parlent de lui
+  (« à côté du bleu ») restent donc justes, et deviennent même plus faciles.
+- Son équipe n'existe pas : ses joueurs sont répartis dans les autres.
+- Le vérificateur confirme que la solution reste unique.
+
+### 4.8 Combien de temps dure une partie ?
+
+Avec la silhouette, chaque équipe n'a que 7 cases plausibles, et chaque erreur en élimine une. Les
+simulations (400 parties, public qui vote en partie au hasard) donnent **3 manches en moyenne, 5 au plus**.
+
+| Manches | Durée avec les réglages par défaut |
 |---|---|
-| 3 | **Indice texte** complémentaire prévu par l'équipe artistique (ex. « Le vert joue dans le grave »). |
-| 5 | **Chaud / froid** affiché après chaque vote (brûlant / tiède / froid selon la distance à la cible). |
-| 7 | **2 cases candidates** surlignées sur le téléphone de l'équipe. |
+| 2 | 1 min 50 |
+| 3 | 2 min 40 |
+| 4 | 3 min 30 |
+| 5 | 4 min 20 |
 
-### 3.8 Équipes résolues, fin de partie, tableaux
-
-- **Équipe résolue** : ses membres reçoivent la proposition « **Aider une autre équipe** » (renfort), sinon ils passent en mode spectateur avec la grille complète. Cela garde tout le monde actif jusqu'au bout.
-- **Équipe vide** (personne n'a rejoint une couleur) : la régie peut placer ce pion à la main ou l'activer en « pilote automatique ».
-- **Fin** : quand tous les pions sont verrouillés, la phase FINAL affiche la figure complète. C'est le *tutti* musical.
-- **Tableaux successifs** (option) : plusieurs figures à la suite, comme les **mouvements** d'une pièce. La figure finale d'un tableau devient la position de départ du suivant. C'est la façon la plus naturelle d'allonger la performance.
-- **Temps limite** (option) : au-delà de X minutes, la régie peut révéler les pions restants un par un.
-
-### 3.9 Constitution des équipes
-
-Deux modes, tous deux gratuits et sans compte :
-
-| Mode | Fonctionnement | Quand l'utiliser |
-|---|---|---|
-| **QR unique + répartition automatique** (défaut) | Chaque nouvel arrivant rejoint l'équipe qui a le moins de membres. | Placement libre dans la salle. |
-| **Un QR par couleur** | Zones de sièges colorées, chacune avec son QR (`/?equipe=bleu`). | Si on peut regrouper physiquement les équipes. Bien mieux pour discuter entre voisins. |
-
-L'équipe est mémorisée sur le téléphone : un rechargement de page ou une mise en veille ne fait pas changer d'équipe.
+Pour allonger ou raccourcir, la régie règle les durées des trois phases (onglet *Réglages*), même pendant
+la partie. La durée réelle dépendra du public : c'est le premier point à observer en répétition.
 
 ---
 
-## 4. Conception des énigmes (game design)
+## 5. Les énigmes
 
-### 4.1 Le principe : un graphe de dépendances
+### 5.1 Le sens des mots
 
-Une bonne grille d'énigmes a :
+Ce lexique est accessible depuis les téléphones.
 
-- des **ancres** : énigmes absolues, résolubles seules (« le violet joue dans le medium, collé au bord gauche » → C1) ;
-- des **énigmes relatives** qui s'appuient sur des pions **déjà verrouillés** (« le vert est le voisin de gauche du bleu »).
-
-Les équipes « ancres » trouvent vite, ce qui débloque les autres : la partie a une **progression dramatique**, et la musique se stabilise par couches successives.
-
-### 4.2 Option A — Montrer la silhouette (recommandé)
-
-On affiche les **6 cases cibles en pointillés** (sans couleur) sur tous les écrans. Le raisonnement avec les énigmes d'exemple :
-
-1. Dans la silhouette, la **seule paire de cases qui se touchent** est E2–E3, donc {bleu, vert} = {E2, E3}.
-2. « Le jaune à **3 cases en ligne droite** du bleu » : seul B3–E3 convient, donc **bleu = E3**, **vert = E2**, **jaune = B3**.
-3. « **Seul** » (diagonales comprises) : A2 touche B3 en diagonale, donc violet et orange vont en **C1 et D5**, et **rouge = A2** (cohérent avec « plus haut que le vert »).
-4. ⚠️ **Violet / orange restent interchangeables**. Il faut ajouter un indice, par exemple : *« Le violet joue dans le **medium** »* (ligne C).
-
-Avec ce seul ajout, la figure du croquis a **une solution unique**, en gardant les énigmes d'origine.
-
-### 4.3 Option B — Silhouette cachée : énigmes ancrées
-
-Exemple réécrit pour la même figure, avec une solution unique et des dépendances progressives :
-
-| Pion | Énigme | Dépend de | Niveau |
-|---|---|---|---|
-| Violet (C1) | « Le violet joue dans le medium, collé au bord gauche. » | — | ancre |
-| Bleu (E3) | « Le bleu est dans le grave, pile au centre. » | — | ancre |
-| Orange (D5) | « L'orange est contre le bord droit, juste au-dessus du grave. » | — | ancre |
-| Vert (E2) | « Le vert est le voisin de gauche du bleu. » | bleu | 2 |
-| Jaune (B3) | « Le jaune est 3 cases au-dessus du bleu. » | bleu | 2 |
-| Rouge (A2) | « Le rouge est tout en haut, dans la colonne du vert. » | vert | 3 |
-
-### 4.4 Énigmes privées ou publiques ?
-
-- **Privées** (chaque équipe ne voit que la sienne) : plus de mystère, mais les équipes « relatives » dépendent du bon placement des autres.
-- **Publiques** (toutes visibles sur le grand écran) : la salle entière coopère, et chaque équipe ne vote que pour son pion. **Recommandé** pour l'énergie collective. C'est un réglage de la régie.
-
-### 4.5 Énigmes structurées et vérificateur
-
-Chaque énigme est saisie **deux fois** : en **texte** (affiché au public) et sous forme de **contrainte structurée** (lue par la machine), par exemple :
-
-```json
-{ "type": "aCote", "pion": "bleu", "de": "vert" }
-{ "type": "distance", "pion": "jaune", "de": "bleu", "cases": 3, "ligneDroite": true }
-{ "type": "plusHaut", "pion": "rouge", "que": "vert" }
-{ "type": "seul", "pion": "violet" }
-{ "type": "ligne", "pion": "violet", "ligne": "C" }
-```
-
-La régie intègre alors un **vérificateur d'énigmes**. Il contrôle que :
-
-- la figure cible satisfait toutes les contraintes (pas d'énigme fausse) ;
-- la solution est **unique**, avec ou sans silhouette (avec silhouette, c'est 720 permutations, vérifiées instantanément) ;
-- et il signale sinon les pions ambigus (« violet/orange interchangeables »).
-
-C'est un outil précieux pour l'équipe artistique quand elle compose de nouveaux tableaux.
-
----
-
-## 5. Architecture technique
-
-### 5.1 Contraintes qui guident le choix
-
-1. **Gratuit**, sans limite qui casse le jour J.
-2. **100+ connexions simultanées** (public + écrans + régie), avec de la marge.
-3. **Temps réel** : tout le monde voit la même chose à la même seconde.
-4. **Robuste** : téléphones qui se mettent en veille, 4G instable, rechargements de page.
-5. **Aucune installation** pour le public.
-6. **Un serveur qui fait autorité** : chronos, dépouillement et validation se font côté serveur, jamais sur un téléphone.
-7. Facile à maintenir par une seule personne.
-
-### 5.2 Comparatif des options
-
-| Option | Verdict | Raison |
-|---|---|---|
-| **Cloudflare Workers + Durable Objects** | ✅ **Recommandé** | Gratuit ; WebSockets natifs ; un « objet » unique et persistant par partie, idéal pour un salon de jeu ; alarmes intégrées pour les chronos ; **pas de mise en veille** ; HTTPS et domaine `workers.dev` inclus. |
-| Node.js + Socket.IO **sur l'ordinateur de régie** (réseau local) | ✅ **Secours** | Zéro dépendance à Internet, latence nulle. Mais le public doit rejoindre un Wi‑Fi local, et beaucoup de téléphones quittent automatiquement un Wi‑Fi « sans Internet » pour la 4G. |
-| Node.js + Socket.IO sur Render (offre gratuite) | ⚠️ | Mise en veille après 15 min sans trafic (~1 min de réveil) et **redémarrage possible à tout moment** : risque de perdre l'état en plein spectacle. |
-| Supabase (offre gratuite) | ⚠️ | ~200 connexions temps réel : suffisant. Mais pas de logique serveur temps réel native (chronos, dépouillement), qu'il faudrait faire tourner dans le navigateur de la régie (fragile). Projet mis en pause après une semaine d'inactivité. |
-| Firebase Realtime Database (offre Spark) | ❌ | **100 connexions simultanées maximum, non extensible** : on atteint la limite avec 100 spectateurs + les écrans. |
-| Outils clés en main (Kahoot, Mentimeter, Slido, Wooclap…) | ❌ | Ni grille 5×5, ni logique d'équipes et de validation, ni vue musiciens ; versions gratuites bridées. |
-| Appli native (App Store / Play Store) | ❌ | Installation obligatoire (friction énorme en salle), compte Apple payant, délais de validation. |
-
-### 5.3 Stack retenue
-
-| Couche | Choix | Pourquoi |
-|---|---|---|
-| Langage | **TypeScript** | Un seul langage, types partagés client/serveur : moins de bugs de protocole. |
-| Interface | **Svelte 5** + **Vite** | Bundle très léger (chargement rapide en 4G faible), réactivité simple. *React fonctionne aussi si c'est la techno maîtrisée.* |
-| Serveur | **Cloudflare Worker** + **1 Durable Object `GameRoom`** | Un objet = une partie : état en mémoire et persisté (SQLite intégré), chronos via les *alarms*. |
-| Temps réel | **PartyServer** (serveur) + **PartySocket** (client) | Surcouches maintenues par Cloudflare : salons, diffusion, **reconnexion automatique** avec reprise. |
-| Outillage | **@cloudflare/vite-plugin** + **Wrangler** | Front et serveur lancés ensemble en local avec `vite dev` ; déploiement avec `wrangler deploy`. |
-| QR code | **qrcode** (npm) | Généré directement sur le grand écran : rien à imprimer pour la version de base. |
-| Tests | **Vitest** (règles), **Playwright** (parcours multi-écrans), script de **charge** (150 faux joueurs) | Voir §9. |
-| CI/CD | **GitHub Actions** → `wrangler deploy` | Gratuit ; chaque merge sur `main` met en ligne. |
-| Polices | **Atkinson Hyperlegible** (gratuite), auto-hébergée | Conçue pour la lisibilité maximale ; pas de dépendance à Google Fonts le jour J. |
-
-### 5.4 Schéma d'architecture
-
-```
-                         Internet (4G/5G ou Wi‑Fi de la salle)
-                                        │
-   ┌────────────────┐   HTTPS + WSS     │      ┌──────────────────────────────────────┐
-   │ 50–100         │◀─────────────────────────▶│ Cloudflare (offre gratuite)           │
-   │ smartphones    │                   │      │                                      │
-   │ (vue Joueur)   │                   │      │  Worker : fichiers statiques (Svelte) │
-   └────────────────┘                   │      │          + routage WebSocket          │
-                                        │      │                 │                    │
-   ┌────────────────┐                   │      │                 ▼                    │
-   │ Grand écran    │◀─────────────────────────▶│  Durable Object « GameRoom »         │
-   │ (vidéoproj.)   │                   │      │   • état de la partie (SQLite)       │
-   └────────────────┘                   │      │   • machine à états + chronos        │
-   ┌────────────────┐                   │      │   • dépouillement, conflits,         │
-   │ Retour scène   │◀─────────────────────────▶│     validation                       │
-   └────────────────┘                   │      │   • diffusion aux clients            │
-   ┌────────────────┐                   │      └──────────────────────────────────────┘
-   │ Régie (PIN)    │◀──────────────────┘
-   └────────────────┘
-
-   Secours : le même code tourne sur l'ordinateur de régie (réseau local de la salle).
-```
-
-### 5.5 Modèle de données (simplifié)
-
-```ts
-type Couleur = 'rouge' | 'orange' | 'jaune' | 'vert' | 'bleu' | 'violet';
-type Case = `${'A'|'B'|'C'|'D'|'E'}${1|2|3|4|5}`;
-type Phase = 'accueil' | 'vote' | 'affichage' | 'deplacement' | 'pause' | 'final';
-
-interface Scenario {             // écrit par l'équipe artistique (fichier JSON)
-  titre: string;
-  tessiture: 'ligne' | 'colonne';           // cf. §2.1
-  afficherSilhouette: boolean;
-  enigmesPubliques: boolean;
-  durees: { vote: number; affichage: number; deplacement: number }; // en secondes
-  tempo?: { bpm: number; tempsParMesure: number };                  // option §7.2
-  pions: Array<{
-    couleur: Couleur;
-    depart: Case | 'aleatoire';
-    cible: Case;                               // JAMAIS envoyée aux téléphones
-    enigme: string;
-    contraintes: Contrainte[];                 // pour le vérificateur §4.5
-    indices: string[];                         // indices progressifs §3.7
-  }>;
-}
-
-interface EtatPartie {           // détenu par le serveur uniquement
-  phase: Phase;
-  manche: number;
-  finPhase: number;              // horodatage serveur (ms) de fin de phase
-  pions: Record<Couleur, { position: Case; verrouille: boolean; essais: Case[]; echecs: number }>;
-  votes: Record<Couleur, Record<IdClient, Case>>;   // manche en cours
-  equipes: Record<Couleur, { membres: number }>;
-}
-```
-
-### 5.6 Protocole temps réel
-
-**Principe : le serveur envoie un instantané complet** (≈ 1–2 Ko) à chaque changement de phase et à chaque (re)connexion. C'est plus simple et plus robuste que d'envoyer des différences : un téléphone qui revient de veille est immédiatement à jour.
-
-| Sens | Message | Contenu |
-|---|---|---|
-| client → serveur | `bonjour` | `idClient` (aléatoire, stocké sur l'appareil), rôle, équipe souhaitée, jeton régie |
-| client → serveur | `vote` | `manche`, `case` |
-| client → serveur | `ping` | heure locale (synchro des horloges) |
-| serveur → client | `etat` | instantané **public** : phase, manche, `finPhase`, positions, verrous, énigmes visibles, effectifs par équipe |
-| serveur → client | `moi` | mon équipe, mon vote actuel, historique ✕ de mon équipe |
-| serveur → équipe | `tendance` | répartition des votes de **mon** équipe (option carte de chaleur, max 4 envois/s) |
-| serveur → client | `pong` | heure serveur |
-| régie → serveur | `regie:*` | `lancer`, `pause`, `reprendre`, `suivant`, `prolonger`, `indice`, `deplacer`, `verrouiller`, `reinitialiser`, `chargerScenario` |
-
-### 5.7 Synchronisation des chronos
-
-Le serveur diffuse l'**heure de fin** de la phase (`finPhase`), pas un compte à rebours. Chaque client estime l'écart entre son horloge et celle du serveur avec des `ping`/`pong` : `écart ≈ heureServeur − (t_envoi + t_réception) / 2`. Tous les écrans affichent alors **le même chrono à quelques dizaines de millisecondes près**, même après une reconnexion.
-
-### 5.8 Robustesse
-
-| Risque | Parade |
+| Mot | Sens |
 |---|---|
-| Téléphone qui se met en veille | **Screen Wake Lock API** : l'écran reste allumé pendant la partie (Chrome, Safari iOS 16.4+, Firefox récent). |
-| Coupure réseau / rechargement | Reconnexion automatique (PartySocket) + instantané complet + identité conservée sur l'appareil. |
-| Crash ou redémarrage serveur | État persisté dans le stockage du Durable Object à chaque transition : la partie reprend où elle en était. |
-| Musicien mal placé, bug, imprévu | **Régie** : déplacer ou verrouiller un pion à la main, mettre en pause, prolonger un chrono, rejouer une manche. |
-| Internet indisponible dans la salle | **Plan B** : serveur local sur l'ordinateur de régie + Wi‑Fi local. **Plan C** : **mode manuel** (la régie clique les cases, le public vote à main levée). Le spectacle continue quoi qu'il arrive. |
+| **à côté de** | Les deux cases se touchent par un côté, pas en diagonale. |
+| **à N cases de** | N cases plus loin, en ligne droite. |
+| **seul** | Aucune des 8 cases autour n'est occupée, diagonales comprises. |
+| **plus haut que**, plus bas que | Sur une rangée plus haute ou plus basse, peu importe la colonne. |
+| **au-dessus de**, en dessous de | Dans la même colonne (même lettre), plus haut ou plus bas. |
+| **à gauche de**, à droite de | Sur la même rangée (même chiffre), plus à gauche ou plus à droite. |
+| **tout en haut**, tout à gauche… | Sur le bord : rangée 1, rangée 5, colonne A ou colonne E. |
 
-### 5.9 Sécurité et anti-triche
+### 5.2 Pourquoi la silhouette change tout
 
-- Les **cases cibles ne quittent jamais le serveur** : impossible de tricher en inspectant la page.
-- **Toutes** les validations sont faites côté serveur : format de case, appartenance à l'équipe, case non verrouillée, vote dans la bonne manche.
-- Un vote par appareil et par manche (le dernier remplace le précédent).
-- Régie protégée par un **code PIN** et une URL non publiée.
-- ⚠️ **Ne jamais limiter par adresse IP** : derrière le Wi‑Fi d'une salle, tous les téléphones partagent souvent la même IP publique.
+Sans silhouette, « le bleu est à côté du vert » est vrai pour des dizaines de positions : le public ne
+pourrait que deviner. Avec la silhouette, le raisonnement devient possible :
 
-### 5.10 RGPD / vie privée
+1. Dans la figure, une seule case touche deux autres : **C5**. Le bleu, qui est à côté du vert, et le rose,
+   qui est au-dessus du bleu, se placent autour d'elle.
+2. Le jaune est à 3 cases du bleu en ligne droite : seul le couple C2–C5 convient. **Bleu en C5, jaune en C2.**
+3. Le rose est au-dessus du bleu, dans la même colonne : **rose en C4**. Il reste **vert en B5**.
+4. Le violet et l'orange veulent être seuls : ce sont les cases isolées A3 et E4. Le violet est tout à
+   gauche : **violet en A3, orange en E4**.
+5. Il reste **rouge en B1**, bien plus haut que le vert.
 
-- **Aucune donnée personnelle** : pas de nom, pas de compte, pas d'e-mail, pas de traceur, pas de statistiques tierces.
-- Seul un identifiant technique aléatoire est stocké sur l'appareil. Il est strictement nécessaire au service, donc sans bandeau de consentement.
-- Données de partie effacées après la représentation.
-- Une ligne d'information sur l'écran d'accueil suffit (« Aucune donnée personnelle n'est collectée »). C'est important si le public compte des mineurs.
+### 5.3 Le vérificateur
 
-### 5.11 Quotas gratuits : on est très loin des limites
+Chaque énigme est saisie deux fois dans la régie : le **texte** affiché au public, et sa **traduction en
+contraintes** (« est à côté de… bleu »). Le vérificateur contrôle alors, à chaque modification :
 
-L'offre gratuite Cloudflare inclut les Durable Objects (stockage SQLite) avec **100 000 requêtes/jour** et **13 000 Go·s de calcul/jour**.
-
-Estimation pour **une représentation** avec 100 joueurs et 40 manches :
-
-- votes et changements d'avis : ~3 messages × 100 joueurs × 40 manches ≈ **12 000 messages** ;
-- connexions, reconnexions, pings, alarmes : quelques milliers.
-
-Même en comptant chaque message comme une requête (en pratique les messages WebSocket sont décomptés de façon encore plus favorable), on reste **sous 20 % du quota journalier**. Côté calcul : 1 h d'activité ≈ 3 600 s × 0,128 Go ≈ **460 Go·s sur 13 000**.
-
-### 5.12 Structure du dépôt proposée
-
-```
-Tutti/
-├── docs/
-│   └── RECOMMANDATION.md        ← ce document
-├── src/
-│   ├── shared/                  ← code partagé client/serveur
-│   │   ├── types.ts
-│   │   ├── regles.ts            ← moteur de jeu PUR (dépouillement, conflits, validation)
-│   │   ├── enigmes.ts           ← contraintes + vérificateur d'unicité
-│   │   └── protocole.ts         ← messages typés
-│   ├── server/
-│   │   ├── index.ts             ← Worker (statique + routage)
-│   │   └── GameRoom.ts          ← Durable Object (état, chronos, diffusion)
-│   └── client/
-│       ├── App.svelte           ← routeur des 4 vues
-│       ├── vues/Joueur.svelte
-│       ├── vues/Ecran.svelte
-│       ├── vues/Scene.svelte
-│       ├── vues/Regie.svelte
-│       ├── composants/Grille.svelte, Chrono.svelte, Pion.svelte, …
-│       └── lib/connexion.ts, horloge.ts, wakelock.ts
-├── scenarios/
-│   └── tableau-1.json           ← la figure du croquis
-├── tests/
-│   ├── regles.test.ts           ← Vitest
-│   ├── parcours.spec.ts         ← Playwright
-│   └── charge.ts                ← 150 faux joueurs
-├── wrangler.jsonc
-├── vite.config.ts
-└── package.json
-```
-
-Le **moteur de règles est isolé en fonctions pures** (`shared/regles.ts`) : il se teste sans réseau ni navigateur, et c'est là que se trouvent les cas délicats (égalités, conflits, échanges).
+- que la figure respecte toutes les énigmes (pas d'énigme fausse) ;
+- que la solution est **unique**, en tenant compte des musiciens absents ;
+- sinon, il nomme les pions interchangeables et donne un exemple.
 
 ---
 
-## 6. Design UX / UI
+## 6. Les écrans
 
 ### 6.1 Principes
 
-1. **Une salle de concert est sombre** : interface **sombre par défaut** pour ne pas éclairer la salle avec 100 écrans, et pour bien contraster sur le vidéoprojecteur.
-2. **La couleur ne suffit jamais** : 6 couleurs dont rouge + vert (le daltonisme touche environ 8 % des hommes). Chaque couleur a un **symbole** et un **nom**.
-3. **Lisible à 10 m** sur le grand écran, **utilisable d'une main** sur le téléphone.
-4. **Zéro texte inutile** : le public doit comprendre en 3 secondes ce qu'on attend de lui (« VOTEZ ! », « RÉSULTAT », « LES MUSICIENS SE DÉPLACENT »).
-5. **Les téléphones restent muets** : la musique est sur scène.
+1. **Une salle de concert est sombre** : interface sombre, pour ne pas éclairer la salle avec 100 téléphones
+   et pour bien ressortir au vidéoprojecteur.
+2. **La couleur ne suffit jamais** : chaque équipe a aussi un **symbole** (carré, triangle, étoile, rond,
+   losange, croix, cœur). Indispensable avec du rouge, du vert et du rose côte à côte.
+3. **Le vert n'est pas la couleur du succès** : c'est celle d'une équipe. Une bonne réponse s'affiche en
+   blanc et gris, comme la case qui se grise.
+4. **Lisible de loin** : les déplacements s'écrivent en très gros (« D4 → B1 »).
+5. **Les téléphones restent muets** : la musique est sur scène. L'écran du téléphone reste allumé pendant la partie.
+6. **Pas de clignotement rapide** : moins de 2 par seconde, sous le seuil de 3 de la norme d'accessibilité.
 
-### 6.2 Palette et symboles
+### 6.2 Les couleurs
 
-| Équipe | Couleur écran | Symbole | Remarque |
-|---|---|---|---|
-| Rouge | `#FF4D5E` | ■ carré | |
-| Orange | `#FF9F1C` | ▲ triangle | |
-| Jaune | `#FFE14D` | ★ étoile | |
-| Vert | `#2ECC71` | ● rond | |
-| Bleu | `#3A86FF` | ◆ losange | |
-| Violet | `#A259FF` | ✚ croix | |
-| **Verrouillé** | `#3A3A44` + 🔒 + liseré couleur | | « grisé », mais on sait qui est là |
-| Fond | `#0E0E14` | | |
-| Texte | `#F5F5F7` | | contraste AAA |
-
-Teintes saturées choisies pour **survivre au vidéoprojecteur** (le jaune et l'orange ont tendance à « baver »). À valider **sur place**, avec le vrai projecteur et l'éclairage de scène, en même temps que la couleur des vêtements des musicien·ne·s.
-
-### 6.3 Écran Joueur (smartphone)
-
-**Accueil / attente :**
-
-```
-┌──────────────────────────────┐
-│          TUTTI               │
-│      Puzzle musical          │
-│                              │
-│  ┌────────────────────────┐  │
-│  │  ◆  ÉQUIPE BLEUE       │  │  ← bandeau de la couleur de l'équipe
-│  └────────────────────────┘  │
-│                              │
-│  Ton rôle : déplacer le      │
-│  musicien BLEU sur la        │
-│  bonne case.                 │
-│                              │
-│  17 joueurs dans ton équipe  │
-│  La partie va commencer…     │
-│                              │
-│  Aucune donnée personnelle   │
-│  n'est collectée.            │
-└──────────────────────────────┘
-```
-
-**Vote :**
-
-```
-┌──────────────────────────────┐
-│ ◆ ÉQUIPE BLEUE     MANCHE 4  │
-│ VOTEZ !               ⏱ 12 s │
-│ ████████████░░░░░░░░         │  ← barre de temps
-├──────────────────────────────┤
-│ « Le bleu doit être à côté   │
-│   du vert. »            (?)  │  ← (?) = lexique §2.3
-├──────────────────────────────┤
-│       1    2    3    4    5  │
-│ aigu A ·    🔒   ·    ·    ·  │
-│      B ·    ·    ·    ·    ·  │
-│  med C ·    ·    ✕    ·    ·  │  ← ✕ = déjà essayé, faux
-│      D ·    ·    ·    ·    ·  │
-│ grave E ·   ·   [◆]   ·    ·  │  ← [ ] = mon vote
-├──────────────────────────────┤
-│ Ton vote : E3 · 41 % de      │
-│ l'équipe est d'accord        │
-└──────────────────────────────┘
-```
-
-- Cases ≥ 56 px, sur toute la largeur de l'écran.
-- La **position actuelle** du pion de l'équipe est toujours visible (symbole plein), le vote en cours aussi (cadre).
-- Option **carte de chaleur** : intensité de la case selon le nombre de votes de l'équipe.
-- Petite vibration au changement de phase (Android ; iOS ne la permet pas).
-- Bandeau « Reconnexion… » discret en cas de coupure.
-
-**Affichage du résultat :** « Votre équipe a choisi **E3** », puis plein écran **✔ Bravo !** (grisé) ou **✕ Ce n'est pas la bonne case** (pulsation couleur).
-
-### 6.4 Grand écran (public)
-
-```
-┌───────────────────────────────────────────────────────────────────────────┐
-│  MANCHE 4 · VOTEZ !                                       ⏱ 12 s  ██████░░ │
-├───────────────────┬──────────────────────────────────────┬────────────────┤
-│ ÉQUIPES           │        1      2      3      4      5 │  ÉNIGMES        │
-│ ■ Rouge   17  ··· │  A     ·    [■?]    ·      ·      · │  (si publiques) │
-│ ▲ Orange  15  ✔   │  B     ·      ·    [★?]    ·      · │                 │
-│ ★ Jaune   16  ··· │  C   [✚?]     ·      ·      ·      · │  ■ « Le rouge  │
-│ ● Vert    18  ··· │  D     ·      ·      ·      ·    🔒▲ │    est plus     │
-│ ◆ Bleu    17  ··· │  E     ·    [●?]   [◆?]    ·      · │    haut… »      │
-│ ✚ Violet  14  ··· │                                      │  …              │
-│                   │  [?] = silhouette (option)           │                 │
-└───────────────────┴──────────────────────────────────────┴────────────────┘
-```
-
-- **Accueil** : QR code géant + adresse courte + compteur de joueurs par équipe (la salle se remplit en direct, c'est déjà un moment de spectacle).
-- **Affichage** : **flèches** animées de l'ancienne case vers la nouvelle, puis grisé ou pulsation.
-- **Final** : figure complète, révélation des couleurs, animation sobre « TUTTI ».
-
-### 6.5 Retour musiciens (écran face à la scène)
-
-Vue **épurée** pour être lue en jouant :
-
-```
-┌──────────────────────────────────────────────────────┐
-│  DÉPLACEMENT                          ⏱ 7 s           │
-│                                                      │
-│  ■ ROUGE   D4 → A2   Boucle 2 · AIGU          🔒     │
-│  ★ JAUNE   C2 → B3   Boucle 3 · MEDIUM-AIGU          │
-│  ● VERT    B4 → E1   Boucle 1 · GRAVE         ✕      │
-│  …                                                   │
-│            (+ mini-grille avec flèches)              │
-└──────────────────────────────────────────────────────┘
-```
-
-L'appli **traduit les coordonnées en consignes musicales** (« Boucle 3 · medium-aigu »). Les musicien·ne·s n'ont rien à calculer.
-
-### 6.6 Régie
-
-- **Pilotage** : Lancer · Pause/Reprise · Passer à la phase suivante · +10 s · Rejouer la manche · Réinitialiser.
-- **Correction** : glisser-déposer un pion, verrouiller ou déverrouiller, envoyer un indice à une équipe.
-- **Supervision** : joueurs connectés par équipe, taux de participation au vote, journal des manches, état du réseau.
-- **Scénario** : charger un fichier JSON, vérificateur d'énigmes (§4.5), réglage des durées, du tempo et des options.
-- **Mode répétition** : faux joueurs simulés pour répéter sans public.
-- Raccourcis clavier (Espace = pause, → = phase suivante) et PIN d'accès.
-
-### 6.7 Animations et sécurité photosensible
-
-- Clignotements **≤ 2 Hz** (la norme d'accessibilité WCAG 2.3.1 interdit plus de 3 flashs par seconde). Il s'agit d'une **pulsation** douce plutôt que d'un flash noir/blanc.
-- Respect du réglage « réduire les animations » du téléphone (`prefers-reduced-motion`).
-- Transitions courtes (200–400 ms) ; les flèches de déplacement durent toute la phase d'affichage.
-
----
-
-## 7. Musique et scène
-
-*(Hors logiciel, mais cela conditionne l'appli.)*
-
-### 7.1 Matrice musicale de chaque musicien·ne
-
-Chaque musicien·ne dispose d'une **matrice 5×5** : colonne = boucle (1 → 5), ligne = registre (aigu → grave), soit **25 cellules musicales**. Fiche papier sur pupitre, ou affichage par le retour scène. La **figure cible doit être composée comme l'accord ou la texture finale** : le moment où tout le monde est en place est le climax musical (*tutti*).
-
-### 7.2 Caler les phases sur le tempo (option recommandée)
-
-Si les boucles partagent un tempo, on peut exprimer les durées **en mesures** pour que chaque mutation tombe sur un début de mesure. Exemple à 90 BPM en 4/4 (1 mesure ≈ 2,67 s) :
-
-| Phase | Mesures | Durée |
+| Équipe | Couleur | Symbole |
 |---|---|---|
-| Vote | 6 | 16,0 s |
-| Affichage | 2 | 5,3 s |
-| Déplacement | 4 | 10,7 s |
-| **Manche** | **12** | **32 s** |
+| Rouge | `#ff4545` | ■ carré |
+| Orange | `#ff9a1f` | ▲ triangle |
+| Jaune | `#ffe03a` | ★ étoile |
+| Vert | `#2fd673` | ● rond |
+| Bleu | `#3d8bff` | ◆ losange |
+| Violet | `#a66bff` | ✚ croix |
+| Rose | `#ff86c8` | ♥ cœur |
 
-Le retour scène peut afficher une **pulsation visuelle** discrète (métronome) pour tenir l'ensemble sans chef. Le changement de boucle se fait au premier temps de la phase suivante.
+À vérifier sur place avec le vrai projecteur : le rouge et le rose, l'orange et le jaune doivent rester
+bien distincts. Si les musiciens peuvent porter leur symbole, c'est encore mieux.
 
-### 7.3 Mise en scène
+### 6.3 Le téléphone du public (`/`)
 
-- **Grille au sol** : cases d'environ **1 à 1,2 m** (soit 5 à 6 m de côté), adhésif de marquage, coordonnées écrites en grand au sol.
-- **Instruments joués assis** (violoncelle…) : prévoir des chaises sur les cases, ou un temps de déplacement plus long.
-- **Deux affichages** : le grand écran pour le public (fond de scène) et un **retour face aux musiciens** (TV ou écran au nez de scène), car ceux-ci tournent le dos au fond de scène.
-- **Vêtements** : chasubles de sport de couleur (peu chères, très visibles), éventuellement avec le **symbole** imprimé ou cousu.
-- **Durée estimée** d'une partie (à affiner en répétition) : 4 à 8 manches avec silhouette (2–4 min), 6 à 15 sans (3–8 min). Pour une pièce plus longue : **enchaîner plusieurs tableaux** (§3.8).
+- **Accueil** : son équipe, son symbole, trois règles.
+- **Vote** : l'énigme, la grille, le chrono. On touche une case ; les votes de l'équipe s'affichent en direct.
+- **Résultat** : « Bravo ! » ou « Raté », avec la flèche du déplacement.
+- **Déplacement** : « Regardez la scène ».
+- **Énigmes et lexique** : toutes les énigmes, tous les indices, le sens des mots.
+- Fonctionne en portrait et en paysage, dès 320 pixels de large.
 
----
+### 6.4 Le grand écran (`/ecran`)
 
-## 8. Réseau et matériel le jour J
+- **Accueil** : le QR code en grand, les règles en trois étapes, les équipes qui se remplissent.
+- **Jeu** : la grille au centre, une carte par équipe (énigme, indices, participation au vote), l'étape en
+  cours (1 Vote, 2 Résultat, 3 Déplacement) et le chrono.
+- **Résultat** : sur chaque carte, le trajet du musicien en très gros.
+- **Final** : la figure s'illumine aux couleurs des équipes.
+- S'adapte aux formats 16:9 et 4:3. Le texte des cartes se réduit tout seul s'il est long.
 
-### 8.1 Réseau
+### 6.5 La régie (`/regie`)
 
-- Chaque téléphone consomme **moins de 1 Mo** pour toute la représentation : la 4G suffit **si la salle capte**.
-- ⚠️ **À tester sur place, bien avant** : réception 4G/5G des différents opérateurs dans la salle (les salles en sous-sol ou très isolées captent mal).
-- Si la salle a un Wi‑Fi **avec Internet** : afficher un **QR code Wi‑Fi** (format `WIFI:T:WPA;S:<réseau>;P:<mot de passe>;;`) à côté du QR de l'appli. Un point d'accès grand public sature vers 30–50 appareils : vérifier la capacité.
-- **Régie et grand écran** sur la connexion la plus fiable (câble si possible), avec un **partage de connexion 4G** en secours.
+Protégée par un code. Six onglets :
 
-### 8.2 Matériel
-
-| Élément | Remarque |
+| Onglet | Contenu |
 |---|---|
-| 1 ordinateur de régie | Navigateur récent (Chrome/Firefox) ; sert aussi de serveur local en plan B. |
-| 1 vidéoprojecteur ou grand écran (HDMI) | Grand écran public, navigateur en plein écran. |
-| 1 écran retour face à la scène | TV ou 2ᵉ ordinateur ou tablette. |
-| QR codes imprimés (option) | Sur les programmes, les sièges ou les zones colorées. |
-| Adhésif de marquage au sol + chasubles | Quelques dizaines d'euros. |
+| **Équipes** | Joueurs, votes en direct, échecs, indices ; donner un indice, révéler un pion, marquer un absent. |
+| **Réglages** | Durées, durée visée, silhouette, énigmes publiques, entraide, enchaînement automatique. |
+| **Scénario** | Cases de départ et à trouver, énigmes, indices, vérificateur ; export et import. |
+| **Répétition** | Joueurs simulés, pour répéter sans public. |
+| **Accès** | QR code, lien du grand écran, changement du code. |
+| **Journal** | Le détail de chaque manche. |
 
-### 8.3 Check-list du jour J
-
-- [ ] Appli déployée et testée sur l'URL finale la veille
-- [ ] Scénario chargé et vérifié (vérificateur d'énigmes au vert)
-- [ ] Test de charge passé (150 faux joueurs)
-- [ ] Réseau testé dans la salle avec au moins 5 téléphones (iOS et Android)
-- [ ] Grand écran et retour scène allumés, plein écran, mise en veille désactivée
-- [ ] PIN de régie connu de 2 personnes
-- [ ] Plan B (serveur local) et plan C (mode manuel) répétés une fois
-- [ ] Couleurs vérifiées sur le vrai projecteur avec l'éclairage de scène
+Au-dessus : Lancer, Pause, Phase suivante, +10 s, Révéler les pions restants, et une grille où l'on peut
+**corriger un pion à la main** ou **voter à la place d'une équipe**.
 
 ---
 
-## 9. Tests et répétitions
+## 7. Architecture technique
 
-| Niveau | Outil | Ce qu'on vérifie |
+### 7.1 Les choix
+
+| Couche | Choix | Pourquoi |
 |---|---|---|
-| **Règles** | Vitest | Dépouillement, égalités, conflits, échanges, cycles, verrouillage, indices, vérificateur d'énigmes. Le cœur du jeu doit être testé à 100 %. |
-| **Parcours** | Playwright (navigateur headless) | Une partie complète avec 1 régie, 1 grand écran et 6 joueurs ouverts en parallèle. |
-| **Charge** | Script Node (150 WebSockets) | Latence de diffusion, reconnexions massives (on coupe et on relance 100 clients d'un coup). |
-| **Terrain** | Vrais téléphones | Safari iOS, Chrome Android, vieux téléphones, mise en veille, passage 4G ↔ Wi‑Fi. |
-| **Répétition générale** | Une classe ou un groupe en public | Compréhension des consignes, durée réelle, lisibilité, énergie de la salle. |
+| Langage | **TypeScript** partout | Les règles et les messages sont partagés entre le serveur et les écrans. |
+| Interface | **Svelte 5** + Vite | Léger : moins de 40 Ko de code pour un téléphone, important avec une 4G moyenne. |
+| Serveur | **Cloudflare Workers + un Durable Object** | Gratuit, pas de mise en veille gênante, un objet unique qui garde la partie et gère les chronos. |
+| Temps réel | **PartyServer** et **PartySocket** | WebSockets avec reconnexion automatique. |
+| Polices | Atkinson Hyperlegible et Bricolage Grotesque, hébergées avec l'appli | Lisibilité, et aucune dépendance à un service externe. |
 
-Le **mode répétition** de la régie (faux joueurs) permet aux musicien·ne·s de répéter les déplacements sans public, autant de fois que nécessaire.
+Options écartées : Firebase (100 connexions simultanées au plus sur l'offre gratuite), Render (serveur
+gratuit qui s'endort et peut redémarrer), Supabase (pas de logique serveur temps réel), Kahoot et
+équivalents (pas de grille ni de logique d'équipes), appli native (installation obligatoire).
+
+### 7.2 Comment ça marche
+
+```
+   Téléphones ─┐
+   Grand écran ├── WebSocket ──▶ Cloudflare ──▶ Durable Object « GameRoom »
+   Régie ──────┘                                 • garde l'état de la partie (enregistré en continu)
+                                                 • fait avancer les phases (chronos par alarmes)
+                                                 • dépouille les votes et applique les règles
+                                                 • diffuse le résultat à tous les écrans
+```
+
+- **Le serveur fait autorité** : chronos, dépouillement et validation ne se font jamais sur un téléphone.
+- **Les cases à trouver ne quittent jamais le serveur**, sauf vers la régie. Impossible de tricher en
+  inspectant la page. Deux tests automatiques le vérifient : rien dans les messages échangés, rien dans
+  les fichiers de l'application (qui sont publics).
+- **État complet à chaque changement** : un téléphone qui sort de veille est à jour immédiatement.
+- **Réseau mobile capricieux** : chaque écran vérifie toutes les 10 secondes que le serveur répond, et se
+  reconnecte seul si la connexion est morte sans s'être fermée. Un vote donné pendant une coupure est
+  renvoyé au retour du réseau.
+- **Chronos synchronisés** : le serveur diffuse l'heure de fin de la phase, chaque écran corrige l'écart
+  de sa propre horloge.
+- **Enregistrement continu** : si le serveur redémarre, la partie reprend où elle en était.
+
+### 7.3 Vie privée
+
+Aucune donnée personnelle : ni nom, ni compte, ni traceur, ni statistiques. Le téléphone garde seulement un
+identifiant aléatoire, nécessaire pour retrouver son équipe après une mise en veille.
+
+### 7.4 Organisation du code
+
+```
+src/shared/     le moteur de jeu : règles, énigmes, équipes (testé sans réseau)
+src/server/     le serveur : GameRoom.ts
+src/client/     les trois écrans (Svelte)
+scenarios/      le scénario du concert
+tests/unit/     tests du moteur
+tests/e2e/      parties complètes dans de vrais navigateurs
+tests/charge/   test de charge
+```
 
 ---
 
-## 10. Plan d'implémentation
+## 8. Scène, réseau et jour J
 
-Estimations **indicatives** pour une personne (j = jour de travail).
+- **Réseau** : la salle n'a que la 4G. Chaque téléphone consomme environ 250 Ko pour toute la partie :
+  c'est très peu, mais il faut **vérifier sur place** que les opérateurs captent bien. L'ordinateur de régie
+  doit avoir la connexion la plus fiable possible (partage de connexion en secours).
+- **Écran** : un ordinateur relié au vidéoprojecteur ou aux panneaux LED, navigateur en plein écran sur
+  `/ecran`. Désactiver sa mise en veille.
+- **Plan B** : le serveur tourne aussi sur l'ordinateur de régie, sans Internet.
+- **Plan C** : le public vote à main levée et la régie joue les votes à sa place.
 
-| Lot | Contenu | Taille |
-|---|---|---|
-| **0. Cadrage** | Réponses aux questions du §12, scénario du tableau 1 finalisé, choix silhouette / énigmes. | — |
-| **1. Socle** | Dépôt, Vite + Svelte + Worker + Durable Object, déploiement « bonjour » sur `workers.dev`, CI GitHub Actions. | ~0,5 j |
-| **2. Moteur de jeu** | Types, machine à états, dépouillement, conflits, validation (fonctions pures) + tests Vitest. | ~1–1,5 j |
-| **3. Temps réel** | `GameRoom`, protocole, instantanés, chronos par alarmes, synchro d'horloge, reconnexion, persistance. | ~1 j |
-| **4. Vues MVP** | Joueur, Grand écran (QR inclus), Régie minimale (lancer, pause, suivant, déplacer). | ~2–3 j |
-| ✅ **Jalon MVP** | **Une partie jouable de bout en bout, en ligne, gratuitement.** | |
-| **5. Finitions** | Animations (flèches, grisé, pulsation), historique ✕, Wake Lock, lexique, indices, renfort des équipes, vue Retour musiciens. | ~1,5–2 j |
-| **6. Outils de répétition** | Faux joueurs, test de charge, vérificateur d'énigmes, éditeur de scénario, tableaux enchaînés, option tempo/mesures, mode local (plan B), mode manuel (plan C). | ~1,5–2 j |
-| **7. Recette** | Test en salle, répétition générale, corrections, check-list jour J. | selon calendrier |
+Le déroulé complet, la check-list et les dépannages sont dans le [guide de régie](GUIDE-REGIE.md).
 
-**Total indicatif : 8 à 10 jours de développement** jusqu'à une version « prête pour la scène », dont **4 à 5 jours** pour un MVP jouable.
+---
+
+## 9. Tests
+
+Le code a aussi été relu par une seconde passe indépendante, qui a trouvé et fait corriger dix défauts
+avant livraison, dont un sérieux : la solution du concert se retrouvait dans un fichier public de
+l'application. Chaque correction est couverte par un test.
+
+| Niveau | Ce qui est vérifié |
+|---|---|
+| **Moteur** (60 tests) | Dépouillement, égalités, cases disputées, échanges, chaînes et cycles, verrouillage, indices, vérificateur d'énigmes, absences, répartition des équipes. 300 parties aléatoires vérifient qu'il n'y a jamais deux pions sur la même case. |
+| **Bout en bout** (32 tests) | Parties complètes dans de vrais navigateurs : téléphone, grand écran et régie ensemble ; réseau qui décroche (reconnexion, vote renvoyé, saisie de la régie conservée) ; absence ; avance manuelle ; révélation ; raccourcis clavier et corrections de la régie ; protection de la régie ; messages invalides ; mise en page sur petits téléphones et écrans 4:3. |
+| **Charge** | 200 téléphones simulés, dont un tiers qui se met en veille en pleine partie : tout le monde reçoit chaque changement de phase en quelques dizaines de millisecondes. |
+
+---
+
+## 10. Ce qui reste à faire avant le concert
+
+1. **Mettre en ligne** : créer un compte Cloudflare gratuit et déployer (10 minutes, voir le README).
+2. **Confirmer les trois points du §3**, puis relire énigmes et indices dans la régie.
+3. **Tester dans la salle** avec 5 à 10 vrais téléphones de différents opérateurs, **dont des iPhone** :
+   les tests automatiques tournent sur le moteur de Chrome, pas sur Safari. L'application est écrite pour
+   fonctionner dès iOS 15, mais seul un essai sur de vrais appareils le confirmera.
+4. **Répéter** avec les musiciens grâce aux joueurs simulés, puis faire une répétition avec un vrai groupe.
+5. **Vérifier les couleurs** sur le vidéoprojecteur ou les panneaux LED.
 
 ---
 
@@ -722,36 +445,19 @@ Estimations **indicatives** pour une personne (j = jour de travail).
 
 | Poste | Coût |
 |---|---|
-| Hébergement + temps réel (Cloudflare, offre gratuite) | **0 €** |
-| Nom de domaine | **0 €** (`*.workers.dev`) — optionnel : ~10 €/an pour une adresse personnalisée |
-| Code source + CI (GitHub) | **0 €** |
-| Bibliothèques (Svelte, Vite, PartyServer, qrcode, Vitest, Playwright…) | **0 €** (open source) |
-| Polices (Atkinson Hyperlegible) | **0 €** |
-| Marquage au sol, chasubles, impressions | quelques dizaines d'euros (optionnel) |
+| Hébergement et temps réel (Cloudflare, offre gratuite) | 0 € |
+| Adresse `tutti.<compte>.workers.dev` | 0 € |
+| Code source et intégration continue (GitHub) | 0 € |
+| Bibliothèques et polices (open source) | 0 € |
+| Adhésif de marquage, chasubles de couleur | quelques dizaines d'euros, facultatif |
+
+Une partie consomme moins de 1 % du quota gratuit quotidien de Cloudflare.
 
 ---
 
-## 12. Questions à poser à l'équipe artistique
+### Sources
 
-1. **Tessiture par ligne** (comme sur le croquis) **ou par colonne** (comme dans le message) ?
-2. **Combien de musicien·ne·s / couleurs** ? (6 sur le croquis : rouge, jaune, violet, orange, vert, bleu.)
-3. La **silhouette** de la figure est-elle montrée au public ? (Recommandé : oui.)
-4. Chaque équipe voit-elle **seulement son énigme** ou **toutes** les énigmes ?
-5. Départ **aléatoire** ou **position initiale fixe** (la petite grille du croquis) ?
-6. **Durée visée** de la performance ? Un seul tableau ou **plusieurs tableaux** enchaînés ?
-7. Durées des phases : **15 s de vote** est-il un choix ferme ? Les boucles ont-elles un **tempo commun** (pour caler les phases en mesures) ?
-8. Que deviennent les **équipes qui ont trouvé** (renfort, spectateurs) ?
-9. **Le lieu** : réception 4G, Wi‑Fi disponible, vidéoprojecteur, place pour un écran retour, dimensions de la scène ?
-10. **Calendrier** : nombre de représentations, dates des répétitions, date de la première ?
-11. Certains instruments sont-ils **joués assis** (violoncelle…) ? Cela influe sur le temps de déplacement.
-12. **Public** : âge, et tout le monde a-t-il un smartphone ? (Le vote est par appareil : on peut voter à plusieurs sur un même téléphone.)
-
----
-
-### Sources (vérifiées en novembre 2026)
-
-- Cloudflare — Durable Objects disponibles sur l'offre gratuite (SQLite) et limites : [Pricing · Durable Objects](https://developers.cloudflare.com/durable-objects/platform/pricing/), [Limits](https://developers.cloudflare.com/durable-objects/platform/limits/), [annonce de l'offre gratuite](https://blog.cloudflare.com/building-ai-agents-with-mcp-authn-authz-and-durable-objects)
-- Firebase — limite de 100 connexions simultanées sur l'offre Spark : [Realtime Database Limits](https://firebase.google.com/docs/database/usage/limits?hl=fr), [FAQ](https://firebase.google.com/docs/database/faq-and-troubleshooting?hl=en)
-- Render — mise en veille après 15 min et redémarrages des instances gratuites : [Deploy for Free](https://render.com/docs/free)
-- Supabase — mise en pause des projets gratuits inactifs : [FAQ Supabase](https://supabase.com/kb/faqs/platform/free-project-pausing)
-- Accessibilité — seuil de 3 flashs par seconde : WCAG 2.1, critère 2.3.1
+- Cloudflare — Durable Objects sur l'offre gratuite : [tarifs](https://developers.cloudflare.com/durable-objects/platform/pricing/), [limites](https://developers.cloudflare.com/durable-objects/platform/limits/)
+- Firebase — [limite de 100 connexions simultanées](https://firebase.google.com/docs/database/usage/limits?hl=fr)
+- Render — [mise en veille des instances gratuites](https://render.com/docs/free)
+- Accessibilité — seuil de 3 clignotements par seconde : WCAG 2.1, critère 2.3.1
