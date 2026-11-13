@@ -15,12 +15,14 @@
   const c = new Connexion('joueur');
   demarrerHorloge();
 
-  onMount(() => {
-    const liberer = garderEcranAllume();
-    return () => {
-      liberer();
-      c.fermer();
-    };
+  onMount(() => () => c.fermer());
+
+  // L'écran reste allumé pendant la partie. Au final, on le laisse s'éteindre :
+  // le concert continue, et une salle pleine de téléphones allumés gênerait.
+  const partieFinie = $derived(c.etat?.phase === 'final');
+  $effect(() => {
+    if (partieFinie) return;
+    return garderEcranAllume();
   });
 
   let aideOuverte = $state(false);

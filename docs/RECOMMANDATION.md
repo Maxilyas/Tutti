@@ -416,7 +416,7 @@ Le déroulé complet, la check-list et les dépannages sont dans le [guide de r�
 | Niveau | Ce qui est vérifié |
 |---|---|
 | **Moteur** (59 tests) | Dépouillement, égalités, cases disputées, échanges, chaînes et cycles, verrouillage, indices, vérificateur d'énigmes, absences, répartition des équipes. 300 parties aléatoires vérifient qu'il n'y a jamais deux pions sur la même case. |
-| **Bout en bout** (23 tests) | Parties complètes dans de vrais navigateurs : téléphone, grand écran et régie ensemble ; reconnexion ; absence ; avance manuelle ; révélation ; protection de la régie ; messages invalides ; mise en page sur petits téléphones et écrans 4:3. |
+| **Bout en bout** (24 tests) | Parties complètes dans de vrais navigateurs : téléphone, grand écran et régie ensemble ; reconnexion ; absence ; avance manuelle ; révélation ; protection de la régie ; messages invalides ; mise en page sur petits téléphones et écrans 4:3. |
 | **Charge** | 200 téléphones simulés, dont un tiers qui se met en veille en pleine partie : tout le monde reçoit chaque changement de phase en quelques dizaines de millisecondes. |
 
 ---
