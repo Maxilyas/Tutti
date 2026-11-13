@@ -39,6 +39,9 @@
     display: grid;
     place-items: center;
     border-radius: 50%;
+    /* Les deux premières lignes servent aux anciens navigateurs (iOS 15), qui ignorent color-mix(). */
+    background: var(--couleur);
+    box-shadow: 0 0 0 0.06em rgba(0, 0, 0, 0.35);
     background: radial-gradient(circle at 32% 26%, color-mix(in srgb, var(--couleur) 72%, #fff) 0%, var(--couleur) 46%, color-mix(in srgb, var(--couleur) 78%, #000) 100%);
     box-shadow:
       0 0 0 0.06em rgba(0, 0, 0, 0.35),
@@ -52,6 +55,7 @@
     height: 54%;
   }
   .amoi .disque {
+    box-shadow: 0 0 0 0.09em #fff;
     box-shadow:
       0 0 0 0.09em #fff,
       0 0 0.9em 0.18em color-mix(in srgb, var(--couleur) 80%, transparent);
@@ -65,6 +69,7 @@
   .absent .disque {
     background: transparent;
     box-shadow: none;
+    border: 0.08em dashed var(--couleur);
     border: 0.08em dashed color-mix(in srgb, var(--couleur) 70%, transparent);
     opacity: 0.75;
   }

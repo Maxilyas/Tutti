@@ -10,7 +10,8 @@ export function ajuster(noeud: HTMLElement): { destroy: () => void } {
   const mesurer = () => {
     let echelle = 1;
     noeud.style.setProperty('--echelle', '1');
-    while (echelle > ECHELLE_MIN && noeud.scrollHeight > noeud.clientHeight + 1) {
+    const deborde = () => noeud.scrollHeight > noeud.clientHeight + 1 || noeud.scrollWidth > noeud.clientWidth + 1;
+    while (echelle > ECHELLE_MIN && deborde()) {
       echelle = Math.max(ECHELLE_MIN, echelle * 0.94);
       noeud.style.setProperty('--echelle', echelle.toFixed(3));
     }

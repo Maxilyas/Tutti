@@ -295,12 +295,15 @@
 
 <style>
   main {
+    /* « vh » puis « dvh » : la seconde ligne est ignorée par les anciens navigateurs (iOS 15). */
+    height: 100vh;
     height: 100dvh;
     display: flex;
     flex-direction: column;
     padding: max(10px, env(safe-area-inset-top)) 14px max(10px, env(safe-area-inset-bottom));
     gap: 10px;
     overflow: hidden;
+    background: var(--fond);
     background:
       radial-gradient(120% 60% at 50% -10%, color-mix(in srgb, var(--equipe, #8f7bff) 22%, transparent), transparent 70%),
       var(--fond);
@@ -351,6 +354,7 @@
     max-width: 380px;
     padding: 20px 16px 18px;
     border-radius: 24px;
+    background: var(--surface);
     background: color-mix(in srgb, var(--equipe) 14%, var(--surface));
     border: 2px solid var(--equipe);
     box-shadow: 0 10px 50px color-mix(in srgb, var(--equipe) 28%, transparent);
@@ -495,6 +499,7 @@
 
   .enigme {
     flex: none;
+    max-height: 34vh;
     max-height: 34dvh;
     overflow-y: auto;
     padding: 11px 14px;
@@ -541,6 +546,7 @@
     container-type: size;
   }
   .cadre-grille {
+    width: min(100%, 52vh);
     width: min(100cqw, 91cqh);
     padding-right: 2%;
   }
@@ -732,6 +738,7 @@
     left: 0;
     right: 0;
     bottom: 0;
+    max-height: 86vh;
     max-height: 86dvh;
     overflow-y: auto;
     padding: 20px 18px max(20px, env(safe-area-inset-bottom));
@@ -817,7 +824,7 @@
   @media (orientation: landscape) and (max-height: 520px) {
     .jeu,
     .final {
-      --cote: min(50vw, calc(100dvh - 12px));
+      --cote: min(50vw, calc(100vh - 12px));
       position: relative;
       align-items: stretch;
       text-align: left;
@@ -842,6 +849,15 @@
     }
     .pied {
       text-align: left;
+    }
+  }
+
+  @supports (height: 100dvh) {
+    @media (orientation: landscape) and (max-height: 520px) {
+      .jeu,
+      .final {
+        --cote: min(50vw, calc(100dvh - 12px));
+      }
     }
   }
 

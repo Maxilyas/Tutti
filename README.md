@@ -114,6 +114,10 @@ npm run test:e2e     # des parties complètes, dans un vrai navigateur
 
 Les tests de bout en bout ont besoin du navigateur de Playwright : `npx playwright install chromium`.
 
+Ces tests tournent sur le moteur de Chrome. L'application est écrite pour les téléphones depuis iOS 15 et
+Android 2020, mais Safari n'est pas testé automatiquement : avant le concert, essayer avec quelques vrais
+téléphones, dont des iPhone.
+
 ### Test de charge
 
 Simule une salle entière, avec des téléphones qui se mettent en veille en pleine partie :

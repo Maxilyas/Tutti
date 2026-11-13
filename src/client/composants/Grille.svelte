@@ -442,6 +442,7 @@
 
   .case.finale {
     border: clamp(1.5px, 0.5cqw, 5px) solid var(--effet);
+    background: rgba(255, 255, 255, 0.14);
     background: color-mix(in srgb, var(--effet) 26%, transparent);
     box-shadow: 0 0 4cqw color-mix(in srgb, var(--effet) 45%, transparent);
   }
@@ -550,6 +551,38 @@
     to {
       transform: scale(1.5);
       opacity: 0;
+    }
+  }
+
+  /*
+   * Anciens téléphones (iOS 15) : les unités « cqw » n'existent pas, les tailles
+   * ci-dessus sont ignorées. Voici des valeurs fixes de remplacement.
+   */
+  @supports not (width: 1cqw) {
+    .lettres,
+    .chiffres {
+      font-size: 13px;
+    }
+    .registres {
+      font-size: 9px;
+    }
+    .voix {
+      font-size: 11px;
+    }
+    .pion {
+      font-size: 40px;
+    }
+    .pion.amoi::after {
+      border: 2px solid var(--couleur);
+    }
+    .case.silhouette:not(.grisee):not(.juste):not(.vote):not(.finale) {
+      border: 2px dashed rgba(255, 255, 255, 0.5);
+    }
+    .case.vote {
+      border: 3px solid var(--equipe, #fff);
+    }
+    .case.finale {
+      border: 2px solid var(--effet);
     }
   }
 </style>

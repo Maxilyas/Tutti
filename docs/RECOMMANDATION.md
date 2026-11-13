@@ -350,7 +350,7 @@ Au-dessus : Lancer, Pause, Phase suivante, +10 s, Révéler les pions restants, 
 | Couche | Choix | Pourquoi |
 |---|---|---|
 | Langage | **TypeScript** partout | Les règles et les messages sont partagés entre le serveur et les écrans. |
-| Interface | **Svelte 5** + Vite | Léger : 35 Ko de code pour un téléphone, important avec une 4G moyenne. |
+| Interface | **Svelte 5** + Vite | Léger : moins de 40 Ko de code pour un téléphone, important avec une 4G moyenne. |
 | Serveur | **Cloudflare Workers + un Durable Object** | Gratuit, pas de mise en veille gênante, un objet unique qui garde la partie et gère les chronos. |
 | Temps réel | **PartyServer** et **PartySocket** | WebSockets avec reconnexion automatique. |
 | Polices | Atkinson Hyperlegible et Bricolage Grotesque, hébergées avec l'appli | Lisibilité, et aucune dépendance à un service externe. |
@@ -416,7 +416,7 @@ Le déroulé complet, la check-list et les dépannages sont dans le [guide de r�
 | Niveau | Ce qui est vérifié |
 |---|---|
 | **Moteur** (59 tests) | Dépouillement, égalités, cases disputées, échanges, chaînes et cycles, verrouillage, indices, vérificateur d'énigmes, absences, répartition des équipes. 300 parties aléatoires vérifient qu'il n'y a jamais deux pions sur la même case. |
-| **Bout en bout** (22 tests) | Parties complètes dans de vrais navigateurs : téléphone, grand écran et régie ensemble ; reconnexion ; absence ; avance manuelle ; révélation ; protection de la régie ; messages invalides ; mise en page sur petits téléphones et écrans 4:3. |
+| **Bout en bout** (23 tests) | Parties complètes dans de vrais navigateurs : téléphone, grand écran et régie ensemble ; reconnexion ; absence ; avance manuelle ; révélation ; protection de la régie ; messages invalides ; mise en page sur petits téléphones et écrans 4:3. |
 | **Charge** | 200 téléphones simulés, dont un tiers qui se met en veille en pleine partie : tout le monde reçoit chaque changement de phase en quelques dizaines de millisecondes. |
 
 ---
@@ -425,7 +425,9 @@ Le déroulé complet, la check-list et les dépannages sont dans le [guide de r�
 
 1. **Mettre en ligne** : créer un compte Cloudflare gratuit et déployer (10 minutes, voir le README).
 2. **Confirmer les trois points du §3**, puis relire énigmes et indices dans la régie.
-3. **Tester dans la salle** avec 5 à 10 vrais téléphones de différents opérateurs.
+3. **Tester dans la salle** avec 5 à 10 vrais téléphones de différents opérateurs, **dont des iPhone** :
+   les tests automatiques tournent sur le moteur de Chrome, pas sur Safari. L'application est écrite pour
+   fonctionner dès iOS 15, mais seul un essai sur de vrais appareils le confirmera.
 4. **Répéter** avec les musiciens grâce aux joueurs simulés, puis faire une répétition avec un vrai groupe.
 5. **Vérifier les couleurs** sur le vidéoprojecteur ou les panneaux LED.
 

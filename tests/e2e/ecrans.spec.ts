@@ -239,6 +239,7 @@ for (const format of [
   { nom: '16:9 (1920 × 1080)', largeur: 1920, hauteur: 1080 },
   { nom: '16:9 (1280 × 720)', largeur: 1280, hauteur: 720 },
   { nom: '4:3 (1024 × 768)', largeur: 1024, hauteur: 768 },
+  { nom: 'fenêtre réduite (1456 × 819)', largeur: 1456, hauteur: 819 },
 ]) {
   test(`le grand écran ne déborde pas : ${format.nom}`, async ({ browser }) => {
     const api = await preparer({ durees: { premierVote: 20, vote: 20, affichage: 2, deplacement: 2 } });
@@ -266,11 +267,19 @@ for (const format of [
     await expect(page.locator('.titre-phase')).toHaveText('Votez !');
     await expect(page.locator('.depart')).toHaveCount(0, { timeout: 5000 });
     expect(await dansLEcran('button.case, .carte, .chrono, .titre-phase')).toBe(true);
-    // Aucune énigme n'est coupée dans sa carte.
-    const coupees = await page.evaluate(() =>
-      [...document.querySelectorAll<HTMLElement>('.carte')].filter((carte) => carte.scrollHeight > carte.clientHeight + 2).length,
-    );
-    expect(coupees).toBe(0);
+    // Aucune carte ne coupe son contenu, ni pendant le vote ni à l'affichage du résultat.
+    const cartesCoupees = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll<HTMLElement>('.carte')]
+          .filter((carte) => carte.scrollHeight > carte.clientHeight + 2 || carte.scrollWidth > carte.clientWidth + 2)
+          .map((carte) => carte.dataset.equipe),
+      );
+    expect(await cartesCoupees()).toEqual([]);
+    api.action({ a: 'suivant' });
+    await expect(page.locator('.titre-phase')).toHaveText('Résultat');
+    await expect(page.locator('.carte .trajet')).toHaveCount(7);
+    expect(await cartesCoupees()).toEqual([]);
+    expect(await dansLEcran('.carte, .pastille, .trajet')).toBe(true);
     api.action({ a: 'simules', nombre: 0 });
     fermerTout(api);
     await contexte.close();
